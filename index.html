@@ -485,7 +485,7 @@ function processRiders(data) {
       const firstName = r.first || r.name.split(' ')[0];
       const sz = labelSize(map.getZoom());
       lbls[id] = L.marker([lat, lon], {
-        icon: L.divIcon({ className: 'lbl', html: `<span style="font-size:${sz}px">${firstName}</span>`, iconAnchor: [-6, 4] }),
+        icon: L.divIcon({ className: 'lbl', html: `<span style="font-size:${sz}px">${firstName}</span>`, iconSize: [0, 0], iconAnchor: [-6, 4] }),
         interactive: false
       }).addTo(map);
     } else {
@@ -550,7 +550,7 @@ function renderList() {
       : '';
 
     const distHtml = showPos && raceKm > 0
-      ? `<div class="rdist" title="Afgelegd">${raceKm.toFixed(0)} km</div><div style="font-size:9px;color:var(--dim);text-align:right" title="Nog te gaan">${remainKm.toFixed(0)} te gaan</div>`
+      ? `<div class="rdist" title="Afgelegd">${raceKm.toFixed(0)} km</div><div style="font-size:9px;color:var(--dim);text-align:right;margin-top:3px" title="Nog te gaan">${remainKm.toFixed(0)} te gaan</div>`
       : `<div class="rdist">—</div>`;
 
     return `<div class="rider${sel ? ' sel' : ''}" onclick="selectRider('${r.id}')">
