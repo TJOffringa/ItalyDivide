@@ -225,6 +225,15 @@
     .pu-cell-val.green  { color: var(--green); }
     .pu-cell-val.muted  { color: var(--muted); }
     .pu-note { font-size: 9px; color: var(--dim); margin-top: 6px; }
+    .pu-track-btn {
+      margin-top: 8px; width: 100%; padding: 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--muted); font-size: 11px;
+      cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+      font-family: inherit;
+    }
+    .pu-track-btn:hover { border-color: var(--dim); color: var(--text); }
+    .pu-track-btn.active { background: rgba(74,222,128,.1); border-color: var(--green); color: var(--green); }
 
     /* Rider name labels on map */
     .lbl { background: transparent; border: none; box-shadow: none; }
@@ -447,7 +456,10 @@ function popupHtml(r) {
       <div class="pu-cell-lbl">Batterij</div>
       <div class="pu-cell-val">${Math.round((r['battery.level']||0)*100)}%</div>
     </div>
-    <div class="pu-note">* Gevolgd sinds ${new Date(acc.firstSeen || STARTED_AT).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}${pct > 0 ? ' · ' + pct + '% gereden' : ''}</div>`;
+    <div class="pu-note">* Gevolgd sinds ${new Date(acc.firstSeen || STARTED_AT).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}${pct > 0 ? ' · ' + pct + '% gereden' : ''}</div>
+    <button class="pu-track-btn${riderTracks[r.id] ? ' active' : ''}" onclick="toggleTrack('${r.id}')">
+      ${riderTracks[r.id] ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
+    </button>`;
 }
 
 // ── Data processing ───────────────────────────────────────────────────
@@ -779,6 +791,33 @@ document.getElementById('btn-mcd').addEventListener('click', () => {
   mcdMarkers.forEach(m => mcdVisible ? m.addTo(map) : m.remove());
   updateMcdBtn();
 });
+
+// ── Rider tracks ─────────────────────────────────────────────────────
+const riderTracks = {};  // id → L.polyline
+
+window.toggleTrack = async function(id) {
+  if (riderTracks[id]) {
+    riderTracks[id].remove();
+    delete riderTracks[id];
+  } else {
+    try {
+      const res = await fetch(`${API_BASE}/api/track/${id}`);
+      const pts = await res.json();
+      if (pts.length > 1) {
+        riderTracks[id] = L.polyline(pts, {
+          color: '#4ade80', weight: 3, opacity: 0.8,
+          lineJoin: 'round', lineCap: 'round'
+        }).addTo(map);
+        map.fitBounds(riderTracks[id].getBounds(), { padding: [40, 40], maxZoom: 14 });
+      }
+    } catch(e) {
+      console.error('Track error:', e);
+    }
+  }
+  // Refresh popup content to update button state
+  const r = riders.find(x => x.id === id);
+  if (r && mkrs[id]) mkrs[id].setPopupContent(popupHtml(r));
+};
 
 // ── Boot ──────────────────────────────────────────────────────────────
 loadRoute().then(() => load());
