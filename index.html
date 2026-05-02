@@ -130,28 +130,24 @@
     #rider-list::-webkit-scrollbar-thumb { background: var(--border); }
 
     .rider {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: flex-start; gap: 8px;
       padding: 9px 14px; border-bottom: 1px solid var(--border);
       cursor: pointer; transition: background .1s;
     }
     .rider:hover { background: var(--surface2); }
     .rider.sel { background: rgba(240,165,0,.07); border-left: 2px solid var(--accent); padding-left: 12px; }
 
-    .rpos { font-size: 10px; font-weight: 700; color: var(--muted); min-width: 22px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .rpos { font-size: 10px; font-weight: 700; color: var(--muted); min-width: 22px; font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 2px; }
     .rpos.top { color: var(--accent); }
 
-    .rdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .rdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
     .rdot.mv { background: var(--green); box-shadow: 0 0 5px var(--green); }
     .rdot.st { background: var(--dim); }
 
     .rinfo { flex: 1; min-width: 0; }
     .rname { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rmeta { font-size: 10px; color: var(--muted); display: flex; gap: 7px; margin-top: 2px; }
+    .rmeta { font-size: 10px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
     .rspd.mv { color: var(--green); }
-
-    .rright { text-align: right; flex-shrink: 0; }
-    .rdist { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .rbat  { font-size: 10px; margin-top: 2px; }
     .bat-lo { color: var(--red); }
     .bat-md { color: var(--accent); }
     .bat-ok { color: var(--dim); }
@@ -549,8 +545,11 @@ function renderList() {
       ? `<div class="rpos ${rank <= 3 ? 'top' : ''}">#${rank}</div>`
       : '';
 
-    const distMeta = showPos && raceKm > 0
-      ? `<span style="color:var(--muted)">${raceKm.toFixed(0)} km</span>${remainKm > 0 ? `<span style="color:var(--accent)">${remainKm.toFixed(0)} te gaan</span>` : ''}`
+    const distRow = showPos && raceKm > 0
+      ? `<div class="rmeta">
+           <span>${raceKm.toFixed(0)} km gereden</span>
+           ${remainKm > 0 ? `<span style="color:var(--accent)">${remainKm.toFixed(0)} te gaan</span>` : ''}
+         </div>`
       : '';
 
     return `<div class="rider${sel ? ' sel' : ''}" onclick="selectRider('${r.id}')">
@@ -562,11 +561,9 @@ function renderList() {
           <span class="rspd ${mv ? 'mv' : ''}">${spd ? spd + ' km/h' : '—'}</span>
           ${(r.altitude||0) > 0 ? `<span>${Math.round(r.altitude)} m</span>` : ''}
           ${stopMs > 60000 ? `<span style="color:var(--red)">${durStr(stopMs)} stop</span>` : ''}
+          <span class="${batCls(bat)}">${bat}%</span>
         </div>
-        ${distMeta ? `<div class="rmeta" style="margin-top:2px">${distMeta}</div>` : ''}
-      </div>
-      <div class="rright">
-        <div class="rbat ${batCls(bat)}">${bat}%</div>
+        ${distRow}
       </div>
     </div>`;
   }).join('');
