@@ -50,6 +50,7 @@
     /* Single toggle tab — always tracks the right edge of the sidebar */
     #sidebar-toggle {
       position: fixed;
+      left: 300px;           /* default; JS overrides after layout */
       top: 50%; transform: translateY(-50%);
       width: 22px; height: 64px;
       background: var(--accent);
@@ -57,7 +58,7 @@
       display: flex; align-items: center; justify-content: center;
       cursor: pointer;
       color: #000; font-size: 18px; font-weight: 900;
-      z-index: 100;
+      z-index: 1001;         /* above Leaflet controls (z-index 800) */
       box-shadow: 2px 0 10px rgba(0,0,0,.45);
       transition: left .22s ease;
       user-select: none;
@@ -652,8 +653,10 @@ _toggle.addEventListener('click', () => {
 if (localStorage.getItem('sidebarCollapsed') === '1') {
   _sidebar.classList.add('collapsed');
 }
-// Set initial position after layout
+// Set initial position after layout (multiple attempts to be safe)
 requestAnimationFrame(updateToggle);
+setTimeout(updateToggle, 100);
+setTimeout(updateToggle, 500);
 window.addEventListener('resize', updateToggle);
 
 // ── Sidebar resize ────────────────────────────────────────────────────
