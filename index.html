@@ -270,6 +270,20 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 }).addTo(map);
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+function labelSize(zoom) {
+  // 10px at zoom 7, scales up with each zoom level
+  return Math.max(10, Math.round(10 * Math.pow(1.25, zoom - 7)));
+}
+function updateLabels() {
+  const px = labelSize(map.getZoom()) + 'px';
+  Object.values(lbls).forEach(m => {
+    const el = m.getElement();
+    if (el) el.querySelector('span').style.fontSize = px;
+  });
+}
+map.on('zoomend', updateLabels);
+
 L.control.attribution({ position: 'bottomleft',
   prefix: '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OSM</a>'
 }).addTo(map);
@@ -423,8 +437,10 @@ function processRiders(data) {
       mkrs[id] = L.circleMarker([lat, lon], circleOpts(mv)).addTo(map);
       mkrs[id].bindPopup('', { maxWidth: 260 });
       mkrs[id].on('click', () => selectRider(id));
+      const firstName = r.first || r.name.split(' ')[0];
+      const sz = labelSize(map.getZoom());
       lbls[id] = L.marker([lat, lon], {
-        icon: L.divIcon({ className: 'lbl', html: `<span>${r.first || r.name.split(' ')[0]}</span>`, iconAnchor: [-6, 4] }),
+        icon: L.divIcon({ className: 'lbl', html: `<span style="font-size:${sz}px">${firstName}</span>`, iconAnchor: [-6, 4] }),
         interactive: false
       }).addTo(map);
     } else {
