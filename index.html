@@ -892,24 +892,29 @@ window.searchPoi = async function() {
   try {
     const res = await fetch(`${API_BASE}/api/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const pts = await res.json();
+    const data = await res.json();
+    const pts  = data.results ?? data;  // backwards compat
+    const errs = data.errors ?? [];
 
-    if (!pts.length) { status.textContent = `Niets gevonden voor "${q}" binnen ${maxdist} km.`; return; }
+    if (!pts.length && !errs.length) { status.textContent = `Niets gevonden voor "${q}" binnen ${maxdist} km.`; return; }
 
-    const color   = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
-    const icon    = L.divIcon({
-      className: 'poi-icon',
-      html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.6)"></div>`,
-      iconSize: [18,18], iconAnchor: [9,9], popupAnchor: [0,-11]
-    });
+    if (pts.length) {
+      const color = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
+      const icon  = L.divIcon({
+        className: 'poi-icon',
+        html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.6)"></div>`,
+        iconSize: [18,18], iconAnchor: [9,9], popupAnchor: [0,-11]
+      });
+      const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
+        .addTo(map)
+        .bindPopup(`<b style="color:${color}">${p.name}</b>${p.address ? '<br><small>'+p.address+'</small>' : ''}`));
+      poiLayers[key] = { markers, visible: true, color, label: q, count: pts.length, maxdist };
+      renderPoiLayers();
+    }
 
-    const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
-      .addTo(map)
-      .bindPopup(`<b style="color:${color}">${p.name}</b>${p.address ? '<br><small>'+p.address+'</small>' : ''}`));
-
-    poiLayers[key] = { markers, visible: true, color, label: q, count: pts.length, maxdist };
-    renderPoiLayers();
-    status.textContent = `✓ ${pts.length} resultaten voor "${q}" binnen ${maxdist} km`;
+    status.textContent = pts.length
+      ? `✓ ${pts.length} resultaten${errs.length ? ` (⚠ ${errs.length} zone${errs.length>1?'s':''} mislukt — probeer opnieuw)` : ''}`
+      : `⚠ Alle zones zijn mislukt — probeer opnieuw`;
   } catch(e) {
     status.textContent = `Fout: ${e.message}`;
   } finally {
