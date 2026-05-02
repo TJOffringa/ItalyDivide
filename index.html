@@ -549,8 +549,9 @@ function renderList() {
       ? `<div class="rpos ${rank <= 3 ? 'top' : ''}">#${rank}</div>`
       : '';
 
-    const distRight   = showPos && raceKm > 0 ? `<div class="rdist">${raceKm.toFixed(0)} km</div>` : `<div class="rdist">—</div>`;
-    const remainMeta  = showPos && remainKm > 0 ? `<span style="color:var(--accent)">${remainKm.toFixed(0)} km te gaan</span>` : '';
+    const distMeta = showPos && raceKm > 0
+      ? `<span style="color:var(--muted)">${raceKm.toFixed(0)} km</span>${remainKm > 0 ? `<span style="color:var(--accent)">${remainKm.toFixed(0)} te gaan</span>` : ''}`
+      : '';
 
     return `<div class="rider${sel ? ' sel' : ''}" onclick="selectRider('${r.id}')">
       ${posHtml}
@@ -561,11 +562,10 @@ function renderList() {
           <span class="rspd ${mv ? 'mv' : ''}">${spd ? spd + ' km/h' : '—'}</span>
           ${(r.altitude||0) > 0 ? `<span>${Math.round(r.altitude)} m</span>` : ''}
           ${stopMs > 60000 ? `<span style="color:var(--red)">${durStr(stopMs)} stop</span>` : ''}
-          ${remainMeta}
         </div>
+        ${distMeta ? `<div class="rmeta" style="margin-top:2px">${distMeta}</div>` : ''}
       </div>
       <div class="rright">
-        ${distRight}
         <div class="rbat ${batCls(bat)}">${bat}%</div>
       </div>
     </div>`;
