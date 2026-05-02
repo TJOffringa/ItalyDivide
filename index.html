@@ -152,23 +152,25 @@
     #poi-toggle:hover { color: var(--text); }
     #poi-body { display: none; padding: 8px 14px 10px; }
     #poi-body.open { display: block; }
-    #poi-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    #poi-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
     #poi-input {
-      flex: 1; min-width: 0;
+      flex: 1 1 100%;
       background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); font-size: 11px; padding: 5px 8px;
-      border-radius: 3px; font-family: inherit;
+      color: var(--text); font-size: 13px; padding: 8px 10px;
+      border-radius: 4px; font-family: inherit;
     }
     #poi-input::placeholder { color: var(--muted); }
     #poi-dist {
+      flex: 1;
       background: var(--surface2); border: 1px solid var(--border);
-      color: var(--muted); font-size: 11px; padding: 5px 4px;
-      border-radius: 3px; cursor: pointer; width: 60px;
+      color: var(--muted); font-size: 13px; padding: 8px 6px;
+      border-radius: 4px; cursor: pointer;
     }
     #poi-btn {
+      flex: 2;
       background: var(--accent); border: none; color: #000;
-      font-size: 11px; font-weight: 700; padding: 5px 10px;
-      border-radius: 3px; cursor: pointer; white-space: nowrap;
+      font-size: 13px; font-weight: 700; padding: 8px 12px;
+      border-radius: 4px; cursor: pointer; white-space: nowrap;
     }
     #poi-status { font-size: 10px; color: var(--muted); margin-bottom: 6px; min-height: 14px; }
     #poi-layers { display: flex; flex-direction: column; gap: 4px; }
