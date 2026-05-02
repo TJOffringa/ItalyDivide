@@ -36,7 +36,26 @@
       flex-direction: column;
       border-right: 1px solid var(--border);
       z-index: 10;
+      position: relative;
     }
+
+    #sidebar-resize {
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 5px;
+      cursor: col-resize;
+      z-index: 20;
+    }
+    #sidebar-resize::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 40px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background .15s;
+    }
+    #sidebar-resize:hover::after { background: var(--accent); }
 
     /* Header */
     #hdr { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -190,6 +209,7 @@
 
   <!-- Sidebar -->
   <div id="sidebar">
+    <div id="sidebar-resize"></div>
     <div id="hdr">
       <div id="hdr-top">
         <span class="race-label">Italy Divide 2026</span>
@@ -580,6 +600,58 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
   clearTimeout(timer); clearInterval(countdown);
   load();
 });
+
+// ── Sidebar resize ────────────────────────────────────────────────────
+(function() {
+  const sidebar  = document.getElementById('sidebar');
+  const resizer  = document.getElementById('sidebar-resize');
+  const MIN_W    = 200;
+
+  function maxW() {
+    return window.innerWidth <= 768
+      ? Math.floor(window.innerWidth * 0.5)
+      : Math.floor(window.innerWidth * 0.7);
+  }
+
+  // Restore saved width
+  const saved = localStorage.getItem('sidebarW');
+  if (saved) sidebar.style.width = Math.min(parseInt(saved), maxW()) + 'px';
+
+  let startX, startW;
+
+  function onMove(e) {
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const w = Math.min(maxW(), Math.max(MIN_W, startW + (x - startX)));
+    sidebar.style.width = w + 'px';
+    localStorage.setItem('sidebarW', w);
+    map.invalidateSize();
+  }
+
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    document.removeEventListener('touchend',  onUp);
+    document.body.style.cursor    = '';
+    document.body.style.userSelect = '';
+  }
+
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    document.body.style.cursor    = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+
+  resizer.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startW = sidebar.offsetWidth;
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend',  onUp);
+  }, { passive: true });
+})();
 
 // ── Boot ──────────────────────────────────────────────────────────────
 loadRoute().then(() => load());
