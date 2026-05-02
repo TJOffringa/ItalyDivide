@@ -715,8 +715,39 @@ window.addEventListener('resize', updateToggle);
   }, { passive: true });
 })();
 
+// ── McDonald's markers ───────────────────────────────────────────────
+async function loadMcDonalds() {
+  try {
+    const res = await fetch(`${BASE}/mcdonalds.json`);
+    if (!res.ok) return;
+    const locations = await res.json();
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width:24px;height:24px;border-radius:50%;
+        background:#DA291C;border:2px solid #fff;
+        display:flex;align-items:center;justify-content:center;
+        font-size:13px;font-weight:900;color:#FFC72C;
+        box-shadow:0 1px 5px rgba(0,0,0,.5);
+        font-family:Arial,sans-serif;line-height:1">M</div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      popupAnchor: [0, -14]
+    });
+    locations.forEach(loc => {
+      L.marker([loc.lat, loc.lon], { icon })
+        .addTo(map)
+        .bindPopup(`<b style="color:#DA291C">McDonald's</b>${loc.address ? '<br><small>' + loc.address + '</small>' : ''}`);
+    });
+    console.log(`McDonald's: ${locations.length} markers added`);
+  } catch(e) {
+    console.error('McD load error:', e);
+  }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────
 loadRoute().then(() => load());
+loadMcDonalds();
 </script>
 </body>
 </html>
