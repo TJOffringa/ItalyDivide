@@ -31,12 +31,41 @@
     #sidebar {
       width: 300px;
       flex-shrink: 0;
+      min-width: 0;
       background: var(--surface);
       display: flex;
       flex-direction: column;
       border-right: 1px solid var(--border);
       z-index: 10;
       position: relative;
+      transition: width .22s ease;
+      overflow: hidden;
+    }
+    #sidebar.collapsed { width: 0 !important; border-right: none; }
+
+    /* Collapse button inside header */
+    #btn-collapse {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 16px; line-height: 1;
+      padding: 2px 4px; border-radius: 3px;
+      transition: color .12s;
+      flex-shrink: 0;
+    }
+    #btn-collapse:hover { color: var(--text); }
+
+    /* Expand tab — visible only when sidebar is collapsed */
+    #sidebar-expand {
+      display: none;
+      position: fixed;
+      left: 0; top: 50%; transform: translateY(-50%);
+      width: 18px; height: 56px;
+      background: var(--accent);
+      border-radius: 0 8px 8px 0;
+      align-items: center; justify-content: center;
+      cursor: pointer;
+      color: #000; font-size: 14px; font-weight: 900;
+      z-index: 15;
+      box-shadow: 2px 0 8px rgba(0,0,0,.4);
     }
 
     #sidebar-resize {
@@ -213,7 +242,10 @@
     <div id="hdr">
       <div id="hdr-top">
         <span class="race-label">Italy Divide 2026</span>
-        <span class="live-pill"><span class="pulse"></span>Live</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="live-pill"><span class="pulse"></span>Live</span>
+          <button id="btn-collapse" title="Zijbalk inklappen">‹</button>
+        </div>
       </div>
       <h1>Classic Route</h1>
     </div>
@@ -264,6 +296,7 @@
 </div>
 
 <div id="map-countdown">↺ —</div>
+<div id="sidebar-expand" onclick="expandSidebar()">›</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
@@ -600,6 +633,28 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
   clearTimeout(timer); clearInterval(countdown);
   load();
 });
+
+// ── Sidebar collapse / expand ─────────────────────────────────────────
+const _sidebar      = document.getElementById('sidebar');
+const _expandTab    = document.getElementById('sidebar-expand');
+const _btnCollapse  = document.getElementById('btn-collapse');
+
+function collapseSidebar() {
+  _sidebar.classList.add('collapsed');
+  _expandTab.style.display = 'flex';
+  localStorage.setItem('sidebarCollapsed', '1');
+  map.invalidateSize();
+}
+window.expandSidebar = function() {
+  _sidebar.classList.remove('collapsed');
+  _expandTab.style.display = 'none';
+  localStorage.setItem('sidebarCollapsed', '0');
+  map.invalidateSize();
+};
+_btnCollapse.addEventListener('click', collapseSidebar);
+
+// Restore collapse state
+if (localStorage.getItem('sidebarCollapsed') === '1') collapseSidebar();
 
 // ── Sidebar resize ────────────────────────────────────────────────────
 (function() {
