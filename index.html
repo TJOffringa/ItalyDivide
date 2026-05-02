@@ -284,6 +284,9 @@
     .pu-track-btn:hover { border-color: var(--dim); color: var(--text); }
     .pu-track-btn.active { background: rgba(74,222,128,.1); border-color: var(--green); color: var(--green); }
 
+    /* POI marker icon wrapper */
+    .poi-icon { background: transparent !important; border: none !important; box-shadow: none !important; }
+
     /* Rider name labels on map */
     .lbl { background: transparent; border: none; box-shadow: none; }
     .lbl span {
@@ -825,7 +828,7 @@ async function loadMcDonalds() {
     if (!res.ok) return;
     const locations = await res.json();
     const icon = L.divIcon({
-      className: '',
+      className: 'poi-icon',
       html: `<img src="mcdonalds-logo.png" style="
         width:32px;height:32px;border-radius:50%;
         border:2px solid #fff;
@@ -895,9 +898,9 @@ window.searchPoi = async function() {
 
     const color   = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
     const icon    = L.divIcon({
-      className: '',
-      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`,
-      iconSize: [14,14], iconAnchor: [7,7], popupAnchor: [0,-9]
+      className: 'poi-icon',
+      html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.6)"></div>`,
+      iconSize: [18,18], iconAnchor: [9,9], popupAnchor: [0,-11]
     });
 
     const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
