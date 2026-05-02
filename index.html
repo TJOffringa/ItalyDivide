@@ -307,8 +307,8 @@ let routeCum = [];
 const map = L.map('map', { zoomControl: false, attributionControl: false })
   .setView([43.5, 12.0], 7);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  maxZoom: 19, subdomains: 'abcd'
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, subdomains: 'abc'
 }).addTo(map);
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -327,7 +327,7 @@ function updateLabels() {
 map.on('zoomend', updateLabels);
 
 L.control.attribution({ position: 'bottomleft',
-  prefix: '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OSM</a>'
+  prefix: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
 const mkrs = {};
