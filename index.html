@@ -718,7 +718,7 @@ window.addEventListener('resize', updateToggle);
 // ── McDonald's markers ───────────────────────────────────────────────
 async function loadMcDonalds() {
   try {
-    const res = await fetch(`${BASE}/mcdonalds.json`);
+    const res = await fetch('mcdonalds.json');
     if (!res.ok) return;
     const locations = await res.json();
     const icon = L.divIcon({
