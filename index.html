@@ -181,100 +181,8 @@
       border-radius: 2px; white-space: nowrap; pointer-events: none;
     }
 
-    /* ── Mobile toggle button ── */
-    #mob-toggle {
-      display: none;
-      position: fixed;
-      top: 16px; left: 16px;
-      z-index: 25;
-      background: var(--accent);
-      color: #000;
-      border: none;
-      border-radius: 10px;
-      padding: 11px 15px;
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      box-shadow: 0 2px 10px rgba(0,0,0,.5);
-      gap: 8px;
-    }
-    #mob-badge {
-      display: inline-block;
-      background: rgba(0,0,0,.25);
-      color: #000;
-      font-size: 11px;
-      font-weight: 700;
-      line-height: 1;
-      padding: 2px 6px;
-      border-radius: 10px;
-      vertical-align: middle;
-    }
-
-    /* ── Mobile overlay ── */
-    #mob-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,.55);
-      z-index: 28;
-    }
-
-    /* ── Sidebar pull-tab (always visible on mobile, sticks out 1 cm) ── */
-    #sidebar-tab {
-      display: none;
-      position: absolute;
-      right: -38px;          /* 1 cm = ~38px beyond the right edge of the sidebar */
-      top: 50%;
-      transform: translateY(-50%);
-      width: 38px;
-      height: 72px;
-      background: var(--accent);
-      border-radius: 0 8px 8px 0;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: #000;
-      font-size: 20px;
-      font-weight: 900;
-      z-index: 31;
-      box-shadow: 3px 0 10px rgba(0,0,0,.4);
-      user-select: none;
-    }
-
-    /* ── Mobile layout ── */
-    @media (max-width: 700px) {
-      #sidebar {
-        position: fixed;
-        top: 0; left: 0; bottom: 0;
-        width: min(82vw, 300px);
-        height: 100%;
-        /* translateX(-100%) hides the sidebar but leaves the tab (right: -38px) visible */
-        transform: translateX(-100%);
-        transition: transform .26s cubic-bezier(.4,0,.2,1);
-        border-right: 1px solid var(--border);
-        border-top: none;
-        border-radius: 0 12px 12px 0;
-        z-index: 30;
-      }
-      #sidebar.open { transform: translateX(0); }
-      /* Hide the tab when sidebar is open (close button not needed, tap overlay closes) */
-      #sidebar.open #sidebar-tab { display: none; }
-
-      #sidebar-tab { display: flex; }
-
-      #map-wrap { width: 100vw; height: 100vh; }
-
-      /* Hide the floating hamburger — tab replaces it */
-      #mob-toggle { display: none !important; }
-
-      #mob-overlay.visible { display: block; }
-      #map-countdown { display: block; }
-
-      /* Zoom controls top-right, away from Chrome bottom bar */
-      .leaflet-top.leaflet-right { top: 16px; right: 16px; }
-      .leaflet-bottom { padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); }
-    }
+    /* Map countdown badge */
+    #map-countdown { display: none; }
   </style>
 </head>
 <body>
@@ -282,7 +190,6 @@
 
   <!-- Sidebar -->
   <div id="sidebar">
-    <div id="sidebar-tab" onclick="toggleSidebar()">›</div>
     <div id="hdr">
       <div id="hdr-top">
         <span class="race-label">Italy Divide 2026</span>
@@ -336,9 +243,6 @@
 
 </div>
 
-<!-- Mobile elements -->
-<div id="mob-overlay" onclick="closeSidebar()"></div>
-<button id="mob-toggle" onclick="toggleSidebar()">☰<span id="mob-badge">—</span></button>
 <div id="map-countdown">↺ —</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -365,8 +269,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
   maxZoom: 19, subdomains: 'abcd'
 }).addTo(map);
 
-const isMobile = window.innerWidth <= 700;
-L.control.zoom({ position: isMobile ? 'topright' : 'bottomright' }).addTo(map);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 L.control.attribution({ position: 'bottomleft',
   prefix: '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OSM</a>'
 }).addTo(map);
@@ -544,7 +447,6 @@ function updateStats() {
   document.getElementById('sv-total').textContent = riders.length;
   document.getElementById('sv-mv').textContent    = mv.length;
   document.getElementById('sv-st').textContent    = riders.length - mv.length;
-  document.getElementById('mob-badge').textContent = mv.length;
 }
 
 // ── Rider list ────────────────────────────────────────────────────────
@@ -618,15 +520,6 @@ window.selectRider = function(id) {
   if (window.innerWidth <= 700) closeSidebar();
 };
 
-// ── Mobile sidebar ────────────────────────────────────────────────────
-window.toggleSidebar = function() {
-  const open = document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('mob-overlay').classList.toggle('visible', open);
-};
-window.closeSidebar = function() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('mob-overlay').classList.remove('visible');
-};
 
 // ── Fetch ─────────────────────────────────────────────────────────────
 async function load() {
