@@ -952,22 +952,76 @@ window.removePoiLayer = function(key) {
 document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
 
 // ── Rider tracks ─────────────────────────────────────────────────────
-const riderTracks = {};  // id → L.polyline
+const riderTracks = {};  // id → { line, hourMarkers[] }
+
+function drawHourMarkers(pts) {
+  const markers = [];
+  // Only use points that have a timestamp (3-element arrays)
+  const timed = pts.filter(p => p[2]);
+  if (timed.length < 2) return markers;
+
+  const t0 = timed[0][2];
+  const t1 = timed[timed.length - 1][2];
+
+  // First full hour after start
+  const firstHour = Math.ceil(t0 / 3600000) * 3600000;
+
+  for (let t = firstHour; t <= t1; t += 3600000) {
+    // Find the track point closest in time to this full hour
+    let best = null, bestDiff = Infinity;
+    for (const p of timed) {
+      const diff = Math.abs(p[2] - t);
+      if (diff < bestDiff) { bestDiff = diff; best = p; }
+    }
+    // Only show marker if closest point is within 35 minutes of the hour
+    if (!best || bestDiff > 35 * 60 * 1000) continue;
+
+    const label = new Date(t).toLocaleTimeString('nl-NL', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome'
+    });
+
+    const icon = L.divIcon({
+      className: 'poi-icon',
+      html: `<div style="
+        background:rgba(20,20,20,.85);
+        border:1.5px solid #4ade80;
+        border-radius:3px;
+        padding:1px 5px;
+        font-size:10px;
+        font-weight:700;
+        color:#4ade80;
+        white-space:nowrap;
+        line-height:15px;
+        box-shadow:0 1px 4px rgba(0,0,0,.5)
+      ">${label}</div>`,
+      iconAnchor: [0, 8],
+      iconSize: null,
+      popupAnchor: [0, -10]
+    });
+
+    const m = L.marker([best[0], best[1]], { icon, interactive: false }).addTo(map);
+    markers.push(m);
+  }
+  return markers;
+}
 
 window.toggleTrack = async function(id) {
   if (riderTracks[id]) {
-    riderTracks[id].remove();
+    riderTracks[id].line.remove();
+    riderTracks[id].hourMarkers.forEach(m => m.remove());
     delete riderTracks[id];
   } else {
     try {
       const res = await fetch(`${API_BASE}/api/track/${id}`);
       const pts = await res.json();
       if (pts.length > 1) {
-        riderTracks[id] = L.polyline(pts, {
+        const line = L.polyline(pts.map(p => [p[0], p[1]]), {
           color: '#4ade80', weight: 3, opacity: 0.8,
           lineJoin: 'round', lineCap: 'round'
         }).addTo(map);
-        map.fitBounds(riderTracks[id].getBounds(), { padding: [40, 40], maxZoom: 14 });
+        const hourMarkers = drawHourMarkers(pts);
+        riderTracks[id] = { line, hourMarkers };
+        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
       }
     } catch(e) {
       console.error('Track error:', e);
