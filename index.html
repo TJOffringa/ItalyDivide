@@ -138,6 +138,53 @@
     }
     #btn-refresh:hover { border-color: var(--dim); color: var(--text); }
 
+    /* POI search */
+    #poi-section {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #poi-toggle {
+      width: 100%; padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer;
+      font-size: 11px; color: var(--muted); font-family: inherit;
+    }
+    #poi-toggle:hover { color: var(--text); }
+    #poi-body { display: none; padding: 8px 14px 10px; }
+    #poi-body.open { display: block; }
+    #poi-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    #poi-input {
+      flex: 1; min-width: 0;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); font-size: 11px; padding: 5px 8px;
+      border-radius: 3px; font-family: inherit;
+    }
+    #poi-input::placeholder { color: var(--muted); }
+    #poi-dist {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 11px; padding: 5px 4px;
+      border-radius: 3px; cursor: pointer; width: 60px;
+    }
+    #poi-btn {
+      background: var(--accent); border: none; color: #000;
+      font-size: 11px; font-weight: 700; padding: 5px 10px;
+      border-radius: 3px; cursor: pointer; white-space: nowrap;
+    }
+    #poi-status { font-size: 10px; color: var(--muted); margin-bottom: 6px; min-height: 14px; }
+    #poi-layers { display: flex; flex-direction: column; gap: 4px; }
+    .poi-layer {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; padding: 4px 6px;
+      background: var(--surface2); border-radius: 3px;
+      border: 1px solid var(--border);
+    }
+    .poi-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .poi-lbl { flex: 1; color: var(--text); }
+    .poi-count { color: var(--muted); font-size: 10px; }
+    .poi-vis  { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 0 2px; }
+    .poi-rm   { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 0 2px; }
+    .poi-vis:hover, .poi-rm:hover { color: var(--text); }
+
     /* Rider list */
     #rider-list { flex: 1; overflow-y: auto; }
     #rider-list::-webkit-scrollbar { width: 3px; }
@@ -293,6 +340,27 @@
         <input type="checkbox" id="chk-stopped" checked> Gestopt
       </label>
       <button id="btn-refresh">↺</button>
+    </div>
+
+    <!-- POI zoeker -->
+    <div id="poi-section">
+      <button id="poi-toggle" onclick="togglePoiPanel()">
+        <span>📍 Zoek langs route</span><span id="poi-arrow">▸</span>
+      </button>
+      <div id="poi-body">
+        <div id="poi-row">
+          <input id="poi-input" placeholder="hotel, restaurant, apotheek…" type="text">
+          <select id="poi-dist">
+            <option value="1">1 km</option>
+            <option value="2" selected>2 km</option>
+            <option value="5">5 km</option>
+            <option value="10">10 km</option>
+          </select>
+          <button id="poi-btn" onclick="searchPoi()">Zoek</button>
+        </div>
+        <div id="poi-status"></div>
+        <div id="poi-layers"></div>
+      </div>
     </div>
 
     <div id="rider-list"></div>
@@ -791,6 +859,87 @@ document.getElementById('btn-mcd').addEventListener('click', () => {
   mcdMarkers.forEach(m => mcdVisible ? m.addTo(map) : m.remove());
   updateMcdBtn();
 });
+
+// ── POI search ───────────────────────────────────────────────────────
+const POI_COLORS = ['#f59e0b','#38bdf8','#a78bfa','#fb7185','#34d399','#f97316','#e879f9','#facc15'];
+const poiLayers  = {};   // key → { markers[], visible, color, label, count }
+let   poiColorIdx = 0;
+
+window.togglePoiPanel = function() {
+  const body  = document.getElementById('poi-body');
+  const arrow = document.getElementById('poi-arrow');
+  const open  = body.classList.toggle('open');
+  arrow.textContent = open ? '▾' : '▸';
+};
+
+window.searchPoi = async function() {
+  const q       = document.getElementById('poi-input').value.trim();
+  const maxdist = document.getElementById('poi-dist').value;
+  const status  = document.getElementById('poi-status');
+  if (!q) return;
+
+  const key = `${q}|${maxdist}km`;
+  if (poiLayers[key]) { status.textContent = 'Al geladen — zie laag hieronder.'; return; }
+
+  status.textContent = '⏳ Zoeken…';
+  document.getElementById('poi-btn').disabled = true;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const pts = await res.json();
+
+    if (!pts.length) { status.textContent = `Niets gevonden voor "${q}" binnen ${maxdist} km.`; return; }
+
+    const color   = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
+    const icon    = L.divIcon({
+      className: '',
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)"></div>`,
+      iconSize: [14,14], iconAnchor: [7,7], popupAnchor: [0,-9]
+    });
+
+    const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
+      .addTo(map)
+      .bindPopup(`<b style="color:${color}">${p.name}</b>${p.address ? '<br><small>'+p.address+'</small>' : ''}`));
+
+    poiLayers[key] = { markers, visible: true, color, label: q, count: pts.length, maxdist };
+    renderPoiLayers();
+    status.textContent = `✓ ${pts.length} resultaten voor "${q}" binnen ${maxdist} km`;
+  } catch(e) {
+    status.textContent = `Fout: ${e.message}`;
+  } finally {
+    document.getElementById('poi-btn').disabled = false;
+  }
+};
+
+function renderPoiLayers() {
+  const el = document.getElementById('poi-layers');
+  el.innerHTML = Object.entries(poiLayers).map(([key, l]) => `
+    <div class="poi-layer">
+      <div class="poi-dot" style="background:${l.color};opacity:${l.visible?1:.35}"></div>
+      <span class="poi-lbl">${l.label}</span>
+      <span class="poi-count">${l.count} · ${l.maxdist}km</span>
+      <button class="poi-vis" title="${l.visible?'Verbergen':'Tonen'}" onclick="togglePoiLayer('${key}')">${l.visible?'👁':'👁'}</button>
+      <button class="poi-rm"  title="Verwijderen" onclick="removePoiLayer('${key}')">✕</button>
+    </div>`).join('');
+}
+
+window.togglePoiLayer = function(key) {
+  const l = poiLayers[key]; if (!l) return;
+  l.visible = !l.visible;
+  l.markers.forEach(m => l.visible ? m.addTo(map) : m.remove());
+  renderPoiLayers();
+};
+
+window.removePoiLayer = function(key) {
+  const l = poiLayers[key]; if (!l) return;
+  l.markers.forEach(m => m.remove());
+  delete poiLayers[key];
+  renderPoiLayers();
+};
+
+// Enter key in POI input triggers search
+document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
 
 // ── Rider tracks ─────────────────────────────────────────────────────
 const riderTracks = {};  // id → L.polyline
