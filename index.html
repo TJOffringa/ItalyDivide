@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Italy Divide — Classic Tracker</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0c0c0c;
+      --surface:  #141414;
+      --surface2: #1e1e1e;
+      --border:   #242424;
+      --text:     #e8e8e8;
+      --muted:    #5a5a5a;
+      --dim:      #333;
+      --accent:   #f0a500;
+      --green:    #4ade80;
+      --green-d:  #16a34a;
+      --red:      #f87171;
+    }
+
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
+
+    /* ── Layout ── */
+    #app { display: flex; height: 100vh; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      z-index: 10;
+    }
+
+    /* Header */
+    #hdr { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #hdr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .race-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+    .live-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(240,165,0,.12); color: var(--accent);
+      font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
+      padding: 3px 7px; border-radius: 2px;
+    }
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+    #hdr h1 { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.3; }
+
+    /* Stats strip */
+    #stats-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .stat { padding: 10px 14px; border-right: 1px solid var(--border); }
+    .stat:last-child { border-right: none; }
+    .stat-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-bottom: 3px; }
+    .stat-val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .stat-val.green { color: var(--green); }
+    .stat-val.dim   { color: var(--dim); }
+
+    /* Controls */
+    #controls {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #sort-select {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 11px; padding: 4px 6px;
+      border-radius: 3px; cursor: pointer;
+    }
+    #sort-select option { background: var(--surface2); }
+    .chk-label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .chk-label input { accent-color: var(--accent); }
+    #btn-refresh {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-size: 11px; padding: 4px 9px;
+      border-radius: 3px; cursor: pointer; transition: .12s;
+    }
+    #btn-refresh:hover { border-color: var(--dim); color: var(--text); }
+
+    /* Rider list */
+    #rider-list { flex: 1; overflow-y: auto; }
+    #rider-list::-webkit-scrollbar { width: 3px; }
+    #rider-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .rider {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 14px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background .1s;
+    }
+    .rider:hover { background: var(--surface2); }
+    .rider.sel { background: rgba(240,165,0,.07); border-left: 2px solid var(--accent); padding-left: 12px; }
+
+    .rpos { font-size: 10px; font-weight: 700; color: var(--muted); min-width: 22px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .rpos.top { color: var(--accent); }
+
+    .rdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .rdot.mv { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .rdot.st { background: var(--dim); }
+
+    .rinfo { flex: 1; min-width: 0; }
+    .rname { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rmeta { font-size: 10px; color: var(--muted); display: flex; gap: 7px; margin-top: 2px; }
+    .rspd.mv { color: var(--green); }
+
+    .rright { text-align: right; flex-shrink: 0; }
+    .rdist { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .rbat  { font-size: 10px; margin-top: 2px; }
+    .bat-lo { color: var(--red); }
+    .bat-md { color: var(--accent); }
+    .bat-ok { color: var(--dim); }
+
+    /* Footer */
+    #footer {
+      padding: 7px 14px; border-top: 1px solid var(--border);
+      font-size: 10px; color: var(--muted); flex-shrink: 0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    /* Map */
+    #map-wrap { flex: 1; position: relative; min-width: 0; }
+    #map { width: 100%; height: 100%; }
+
+    /* Error toast */
+    #toast {
+      display: none; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(248,113,113,.15); border: 1px solid var(--red);
+      color: var(--red); font-size: 12px; padding: 8px 16px;
+      border-radius: 4px; z-index: 1000; white-space: nowrap;
+    }
+
+    /* Map countdown badge (mobile only) */
+    #map-countdown {
+      display: none;
+      position: fixed;
+      bottom: 20px; right: 16px;
+      z-index: 15;
+      background: rgba(14,14,14,.88);
+      color: var(--muted);
+      font-size: 12px; font-variant-numeric: tabular-nums;
+      padding: 6px 11px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      pointer-events: none;
+    }
+
+    /* Leaflet overrides */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text);
+      font-family: inherit; box-shadow: 0 4px 24px rgba(0,0,0,.6);
+    }
+    .leaflet-popup-tip { background: var(--surface); }
+    .leaflet-popup-content { font-size: 12px; line-height: 1.7; margin: 12px 16px; }
+    .leaflet-popup-close-button { color: var(--muted) !important; }
+
+    .pu-name { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .pu-status { font-size: 12px; margin-bottom: 10px; }
+    .pu-status.mv { color: var(--green); }
+    .pu-status.st { color: var(--muted); }
+    .pu-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px; margin-bottom: 4px;
+    }
+    .pu-cell { background: var(--surface2); border-radius: 4px; padding: 7px 10px; }
+    .pu-cell-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 3px; }
+    .pu-cell-val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .pu-cell-val.accent { color: var(--accent); }
+    .pu-cell-val.green  { color: var(--green); }
+    .pu-cell-val.muted  { color: var(--muted); }
+    .pu-note { font-size: 9px; color: var(--dim); margin-top: 6px; }
+
+    /* Rider name labels on map */
+    .lbl { background: transparent; border: none; box-shadow: none; }
+    .lbl span {
+      font-size: 10px; color: #ddd;
+      background: rgba(0,0,0,.55); padding: 1px 5px;
+      border-radius: 2px; white-space: nowrap; pointer-events: none;
+    }
+
+    /* ── Mobile toggle button ── */
+    #mob-toggle {
+      display: none;
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 25;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      padding: 11px 15px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,.5);
+      gap: 8px;
+    }
+    #mob-badge {
+      display: inline-block;
+      background: rgba(0,0,0,.25);
+      color: #000;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 10px;
+      vertical-align: middle;
+    }
+
+    /* ── Mobile overlay ── */
+    #mob-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      z-index: 28;
+    }
+
+    /* ── Sidebar pull-tab (always visible on mobile, sticks out 1 cm) ── */
+    #sidebar-tab {
+      display: none;
+      position: absolute;
+      right: -38px;          /* 1 cm = ~38px beyond the right edge of the sidebar */
+      top: 50%;
+      transform: translateY(-50%);
+      width: 38px;
+      height: 72px;
+      background: var(--accent);
+      border-radius: 0 8px 8px 0;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #000;
+      font-size: 20px;
+      font-weight: 900;
+      z-index: 31;
+      box-shadow: 3px 0 10px rgba(0,0,0,.4);
+      user-select: none;
+    }
+
+    /* ── Mobile layout ── */
+    @media (max-width: 700px) {
+      #sidebar {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: min(82vw, 300px);
+        height: 100%;
+        /* translateX(-100%) hides the sidebar but leaves the tab (right: -38px) visible */
+        transform: translateX(-100%);
+        transition: transform .26s cubic-bezier(.4,0,.2,1);
+        border-right: 1px solid var(--border);
+        border-top: none;
+        border-radius: 0 12px 12px 0;
+        z-index: 30;
+      }
+      #sidebar.open { transform: translateX(0); }
+      /* Hide the tab when sidebar is open (close button not needed, tap overlay closes) */
+      #sidebar.open #sidebar-tab { display: none; }
+
+      #sidebar-tab { display: flex; }
+
+      #map-wrap { width: 100vw; height: 100vh; }
+
+      /* Hide the floating hamburger — tab replaces it */
+      #mob-toggle { display: none !important; }
+
+      #mob-overlay.visible { display: block; }
+      #map-countdown { display: block; }
+
+      /* Zoom controls top-right, away from Chrome bottom bar */
+      .leaflet-top.leaflet-right { top: 16px; right: 16px; }
+      .leaflet-bottom { padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-tab" onclick="toggleSidebar()">›</div>
+    <div id="hdr">
+      <div id="hdr-top">
+        <span class="race-label">Italy Divide 2026</span>
+        <span class="live-pill"><span class="pulse"></span>Live</span>
+      </div>
+      <h1>Classic Route</h1>
+    </div>
+
+    <div id="stats-strip">
+      <div class="stat">
+        <div class="stat-lbl">Rijders</div>
+        <div class="stat-val" id="sv-total">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">Rijdend</div>
+        <div class="stat-val green" id="sv-mv">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">Gestopt</div>
+        <div class="stat-val dim" id="sv-st">—</div>
+      </div>
+    </div>
+
+    <div id="controls">
+      <select id="sort-select">
+        <option value="pos">↓ Positie</option>
+        <option value="speed">↓ Snelheid</option>
+        <option value="name">A–Z Naam</option>
+        <option value="stop">↓ Stop</option>
+        <option value="battery">↓ Batterij</option>
+      </select>
+      <label class="chk-label">
+        <input type="checkbox" id="chk-stopped" checked> Gestopt
+      </label>
+      <button id="btn-refresh">↺</button>
+    </div>
+
+    <div id="rider-list"></div>
+
+    <div id="footer">
+      <span id="update-time">—</span>
+      <span id="next-refresh"></span>
+    </div>
+  </div>
+
+  <!-- Map -->
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="toast"></div>
+  </div>
+
+</div>
+
+<!-- Mobile elements -->
+<div id="mob-overlay" onclick="closeSidebar()"></div>
+<button id="mob-toggle" onclick="toggleSidebar()">☰<span id="mob-badge">—</span></button>
+<div id="map-countdown">↺ —</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+'use strict';
+
+const BASE = '';
+const API_BASE = 'https://tracker.klikschaak.nl';
+
+// ── State ─────────────────────────────────────────────────────────────
+const STARTED_AT = new Date();
+const ACC  = {};
+let riders = [];
+let selId  = null;
+let timer, countdown, cdVal = 60;
+let routePts = [];
+let routeCum = [];
+
+// ── Map ───────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: false, attributionControl: false })
+  .setView([43.5, 12.0], 7);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19, subdomains: 'abcd'
+}).addTo(map);
+
+const isMobile = window.innerWidth <= 700;
+L.control.zoom({ position: isMobile ? 'topright' : 'bottomright' }).addTo(map);
+L.control.attribution({ position: 'bottomleft',
+  prefix: '© <a href="https://carto.com">CARTO</a> © <a href="https://openstreetmap.org">OSM</a>'
+}).addTo(map);
+
+const mkrs = {};
+const lbls = {};
+
+function circleOpts(mv) {
+  return { radius: mv ? 7 : 5, fillColor: mv ? '#4ade80' : '#374151',
+           color: mv ? '#16a34a' : '#1f2937', weight: 1.5, fillOpacity: mv ? .88 : .65 };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function hav(a, b, c, d) {
+  const R = 6371, r = Math.PI / 180;
+  const x = Math.sin((c-a)*r/2)**2 + Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+
+function durStr(ms) {
+  if (!ms || ms < 60000) return '—';
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
+  return h > 0 ? `${h}u ${String(m % 60).padStart(2,'0')}m` : `${m}m`;
+}
+
+function batCls(pct) { return pct < 30 ? 'bat-lo' : pct < 50 ? 'bat-md' : 'bat-ok'; }
+
+// ── Route / Race position ─────────────────────────────────────────────
+async function loadRoute() {
+  try {
+    const res = await fetch('route.json');
+    if (!res.ok) return;
+    routePts = await res.json();
+    routeCum = [0];
+    for (let i = 1; i < routePts.length; i++) {
+      routeCum.push(routeCum[i-1] + hav(routePts[i-1][0], routePts[i-1][1], routePts[i][0], routePts[i][1]));
+    }
+    L.polyline(routePts, { color: '#e07800', weight: 3, opacity: 0.75, lineJoin: 'round' }).addTo(map);
+  } catch(e) {
+    console.error('Route load error:', e);
+  }
+}
+
+function getRaceKm(lat, lon) {
+  if (!routePts.length) return 0;
+  let best = Infinity, idx = 0;
+  for (let i = 0; i < routePts.length; i++) {
+    const dlat = lat - routePts[i][0], dlon = lon - routePts[i][1];
+    const dsq = dlat*dlat + dlon*dlon;
+    if (dsq < best) { best = dsq; idx = i; }
+  }
+  return routeCum[idx];
+}
+
+// ── Popup ─────────────────────────────────────────────────────────────
+function popupHtml(r) {
+  const now = Date.now();
+  const mv  = r.motionType === 'MOVING';
+  const spd = r.speed > 0 ? (r.speed * 3.6).toFixed(1) : null;
+  const acc = ACC[r.id] || {};
+
+  const raceKm   = acc.raceKm || 0;
+  const totalKm  = routeCum.length ? routeCum[routeCum.length - 1] : 0;
+  const remainKm = totalKm > 0 ? Math.max(0, totalKm - raceKm) : 0;
+  const pct      = totalKm > 0 ? Math.round(raceKm / totalKm * 100) : 0;
+
+  const stopMs   = (acc.stopMs || 0) + (acc.stopSince   ? now - acc.stopSince   : 0);
+  const ridingMs = (acc.ridingMs || 0) + (acc.ridingSince ? now - acc.ridingSince : 0);
+  const dist     = acc.dist || 0;
+
+  return `
+    <div class="pu-name">${r.name}</div>
+    <div class="pu-status ${mv ? 'mv' : 'st'}">${mv && spd ? '▶ ' + spd + ' km/h' : '◼ Gestopt'}</div>
+    <div class="pu-grid">
+      <div class="pu-cell">
+        <div class="pu-cell-lbl">Afstand afgelegd</div>
+        <div class="pu-cell-val accent">${raceKm > 0 ? raceKm.toFixed(0) + ' km' : '—'}${pct > 0 ? '<br><span style="font-size:11px;font-weight:400;color:var(--muted)">'+pct+'% gereden</span>' : ''}</div>
+      </div>
+      <div class="pu-cell">
+        <div class="pu-cell-lbl">Nog te gaan</div>
+        <div class="pu-cell-val">${remainKm > 0 ? remainKm.toFixed(0) + ' km' : '—'}</div>
+      </div>
+      <div class="pu-cell">
+        <div class="pu-cell-lbl">Afstand*</div>
+        <div class="pu-cell-val ${dist > 0.1 ? 'green' : 'muted'}">${dist > 0.1 ? dist.toFixed(1) + ' km' : '—'}</div>
+      </div>
+      <div class="pu-cell">
+        <div class="pu-cell-lbl">Hoogte</div>
+        <div class="pu-cell-val">${(r.altitude||0).toFixed(0)} m</div>
+      </div>
+      <div class="pu-cell">
+        <div class="pu-cell-lbl">Rijdtijd*</div>
+        <div class="pu-cell-val ${ridingMs > 60000 ? '' : 'muted'}">${durStr(ridingMs)}</div>
+      </div>
+      <div class="pu-cell">
+        <div class="pu-cell-lbl">Stoptijd*</div>
+        <div class="pu-cell-val ${stopMs > 60000 ? '' : 'muted'}">${durStr(stopMs)}</div>
+      </div>
+    </div>
+    <div class="pu-cell" style="margin-top:0">
+      <div class="pu-cell-lbl">Batterij</div>
+      <div class="pu-cell-val">${Math.round((r['battery.level']||0)*100)}%</div>
+    </div>
+    <div class="pu-note">* Gevolgd sinds ${new Date(acc.firstSeen || STARTED_AT).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}${pct > 0 ? ' · ' + pct + '% gereden' : ''}</div>`;
+}
+
+// ── Data processing ───────────────────────────────────────────────────
+function processRiders(data) {
+  const now = Date.now();
+  riders = data;
+
+  data.forEach(r => {
+    const id = r.id;
+    const [lat, lon] = r.latest_gps_point;
+    const mv     = r.motionType === 'MOVING';
+    const raceKm = r._stats?.raceKm || getRaceKm(lat, lon);
+    const srv    = r._stats;
+
+    if (!ACC[id]) {
+      // Seed from server-accumulated stats so every visitor sees full history
+      ACC[id] = {
+        dist:       srv?.dist     || 0,
+        ridingMs:   srv?.ridingMs || 0,
+        stopMs:     srv?.stopMs   || 0,
+        stopSince:   mv ? null : now,
+        ridingSince: mv ? now  : null,
+        prevLat: lat, prevLon: lon,
+        raceKm,
+        firstSeen: srv?.firstSeen || now,
+      };
+    } else {
+      const s = ACC[id];
+      // Sync upward from server (server is authoritative for totals)
+      if (srv) {
+        s.dist     = Math.max(s.dist     || 0, srv.dist     || 0);
+        s.ridingMs = Math.max(s.ridingMs || 0, srv.ridingMs || 0);
+        s.stopMs   = Math.max(s.stopMs   || 0, srv.stopMs   || 0);
+        if (srv.firstSeen && (!s.firstSeen || srv.firstSeen < s.firstSeen))
+          s.firstSeen = srv.firstSeen;
+      }
+      s.prevLat = lat; s.prevLon = lon;
+      s.raceKm  = raceKm;
+
+      if (!mv && !s.stopSince)   { s.stopSince   = now; }
+      if ( mv &&  s.stopSince)   { s.stopMs   += now - s.stopSince;   s.stopSince   = null; }
+      if ( mv && !s.ridingSince) { s.ridingSince  = now; }
+      if (!mv &&  s.ridingSince) { s.ridingMs += now - s.ridingSince; s.ridingSince = null; }
+    }
+
+    if (!mkrs[id]) {
+      mkrs[id] = L.circleMarker([lat, lon], circleOpts(mv)).addTo(map);
+      mkrs[id].bindPopup('', { maxWidth: 260 });
+      mkrs[id].on('click', () => selectRider(id));
+      lbls[id] = L.marker([lat, lon], {
+        icon: L.divIcon({ className: 'lbl', html: `<span>${r.first || r.name.split(' ')[0]}</span>`, iconAnchor: [-6, 4] }),
+        interactive: false
+      }).addTo(map);
+    } else {
+      mkrs[id].setLatLng([lat, lon]).setStyle(circleOpts(mv));
+      lbls[id].setLatLng([lat, lon]);
+    }
+    mkrs[id].setPopupContent(popupHtml(r));
+  });
+
+  updateStats();
+  renderList();
+  document.getElementById('update-time').textContent =
+    'Bijgewerkt ' + new Date().toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  startCountdown();
+}
+
+// ── Stats strip ───────────────────────────────────────────────────────
+function updateStats() {
+  const mv = riders.filter(r => r.motionType === 'MOVING');
+  document.getElementById('sv-total').textContent = riders.length;
+  document.getElementById('sv-mv').textContent    = mv.length;
+  document.getElementById('sv-st').textContent    = riders.length - mv.length;
+  document.getElementById('mob-badge').textContent = mv.length;
+}
+
+// ── Rider list ────────────────────────────────────────────────────────
+function renderList() {
+  const now         = Date.now();
+  const showStopped = document.getElementById('chk-stopped').checked;
+  const sortBy      = document.getElementById('sort-select').value;
+  const totalKm     = routeCum.length ? routeCum[routeCum.length - 1] : 0;
+
+  let rows = showStopped ? riders : riders.filter(r => r.motionType === 'MOVING');
+
+  rows = [...rows].sort((a, b) => {
+    const sa = ACC[a.id] || {}, sb = ACC[b.id] || {};
+    if (sortBy === 'pos')     return (sb.raceKm||0) - (sa.raceKm||0);
+    if (sortBy === 'name')    return a.name.localeCompare(b.name, 'nl');
+    if (sortBy === 'battery') return (b['battery.level']||0) - (a['battery.level']||0);
+    if (sortBy === 'stop') {
+      const at = (sa.stopMs||0) + (sa.stopSince ? now-sa.stopSince : 0);
+      const bt = (sb.stopMs||0) + (sb.stopSince ? now-sb.stopSince : 0);
+      return bt - at;
+    }
+    return (b.speed||0) - (a.speed||0);
+  });
+
+  const showPos = sortBy === 'pos' && routePts.length > 0;
+
+  document.getElementById('rider-list').innerHTML = rows.map((r, i) => {
+    const mv     = r.motionType === 'MOVING';
+    const spd    = r.speed > 0 ? (r.speed * 3.6).toFixed(1) : null;
+    const acc    = ACC[r.id] || {};
+    const stopMs = (acc.stopMs||0) + (acc.stopSince ? now - acc.stopSince : 0);
+    const bat    = Math.round((r['battery.level']||0) * 100);
+    const sel    = r.id === selId;
+    const rank   = i + 1;
+    const raceKm   = acc.raceKm || 0;
+    const remainKm = totalKm > 0 ? Math.max(0, totalKm - raceKm) : 0;
+
+    const posHtml = showPos
+      ? `<div class="rpos ${rank <= 3 ? 'top' : ''}">#${rank}</div>`
+      : '';
+
+    const distHtml = showPos && raceKm > 0
+      ? `<div class="rdist" title="Afgelegd">${raceKm.toFixed(0)} km</div><div style="font-size:9px;color:var(--dim);text-align:right" title="Nog te gaan">${remainKm.toFixed(0)} te gaan</div>`
+      : `<div class="rdist">—</div>`;
+
+    return `<div class="rider${sel ? ' sel' : ''}" onclick="selectRider('${r.id}')">
+      ${posHtml}
+      <div class="rdot ${mv ? 'mv' : 'st'}"></div>
+      <div class="rinfo">
+        <div class="rname">${r.name}</div>
+        <div class="rmeta">
+          <span class="rspd ${mv ? 'mv' : ''}">${spd ? spd + ' km/h' : '—'}</span>
+          ${(r.altitude||0) > 0 ? `<span>${Math.round(r.altitude)} m</span>` : ''}
+          ${stopMs > 60000 ? `<span style="color:var(--red)">${durStr(stopMs)} stop</span>` : ''}
+        </div>
+      </div>
+      <div class="rright">
+        ${distHtml}
+        <div class="rbat ${batCls(bat)}">${bat}%</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Select rider ──────────────────────────────────────────────────────
+window.selectRider = function(id) {
+  selId = id;
+  const r = riders.find(x => x.id === id);
+  if (r) mkrs[id] && mkrs[id].openPopup();
+  renderList();
+  if (window.innerWidth <= 700) closeSidebar();
+};
+
+// ── Mobile sidebar ────────────────────────────────────────────────────
+window.toggleSidebar = function() {
+  const open = document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('mob-overlay').classList.toggle('visible', open);
+};
+window.closeSidebar = function() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('mob-overlay').classList.remove('visible');
+};
+
+// ── Fetch ─────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const res = await fetch(`${API_BASE}/api/riders?_=` + Date.now());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { riders: data } = await res.json();
+    processRiders(data);
+    showToast(null);
+  } catch(e) {
+    showToast('Verbindingsfout: ' + e.message);
+    startCountdown();
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.style.display = msg ? 'block' : 'none';
+  if (msg) el.textContent = msg;
+}
+
+// ── Countdown ─────────────────────────────────────────────────────────
+function startCountdown() {
+  clearTimeout(timer); clearInterval(countdown);
+  cdVal = 60;
+  const elFtr = document.getElementById('next-refresh');
+  const elMap = document.getElementById('map-countdown');
+  countdown = setInterval(() => {
+    cdVal--;
+    const txt = `↺ ${cdVal}s`;
+    elFtr.textContent = txt;
+    elMap.textContent = txt;
+    if (cdVal <= 0) { clearInterval(countdown); load(); }
+  }, 1000);
+  timer = setTimeout(load, 60000);
+}
+
+// ── Controls ──────────────────────────────────────────────────────────
+document.getElementById('chk-stopped').addEventListener('change', renderList);
+document.getElementById('sort-select').addEventListener('change', renderList);
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  clearTimeout(timer); clearInterval(countdown);
+  load();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────
+loadRoute().then(() => load());
+</script>
+</body>
+</html>
