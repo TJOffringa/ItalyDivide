@@ -1140,6 +1140,9 @@ window.toggleTrack = async function(id) {
 let gradientPts  = null;   // [lat, lon, ele] array, lazy-loaded
 let gradientLines = [];    // active Leaflet polylines
 
+// Stap waarmee route-gradient.json is gegenereerd t.o.v. route.json
+const GRADIENT_STEP = 4;
+
 const GRAD_STOPS = [
   [-8,        '#1e3a8a'],  // steile afdaling
   [-4,        '#2563eb'],  // afdaling
@@ -1156,12 +1159,12 @@ function gradColor(pct) {
   return '#111827';
 }
 
-function buildGradientLines(pts) {
+function buildGradientLines(gradPts) {
   // Rolling elevation smoothing (window ±2)
-  const sm = pts.map((p, i) => {
-    const s = Math.max(0, i - 2), e = Math.min(pts.length - 1, i + 2);
+  const sm = gradPts.map((p, i) => {
+    const s = Math.max(0, i - 2), e = Math.min(gradPts.length - 1, i + 2);
     let sum = 0, n = 0;
-    for (let j = s; j <= e; j++) { sum += pts[j][2]; n++; }
+    for (let j = s; j <= e; j++) { sum += gradPts[j][2]; n++; }
     return [p[0], p[1], sum / n];
   });
 
@@ -1170,17 +1173,26 @@ function buildGradientLines(pts) {
 
   for (let i = 0; i < sm.length - 1; i++) {
     const distKm = hav(sm[i][0], sm[i][1], sm[i+1][0], sm[i+1][1]);
-    // gradient in %, skip micro-segments to avoid division noise
-    const grad = distKm > 0.03 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
-    const c = gradColor(grad);
+    const grad   = distKm > 0.03 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
+    const c      = gradColor(grad);
+
+    // Gebruik tussenliggende routePts voor vloeiende bochten
+    const ri0 = i * GRADIENT_STEP;
+    const ri1 = Math.min((i + 1) * GRADIENT_STEP + 1, routePts.length);
+    const sub  = routePts.length > 0
+      ? routePts.slice(ri0, ri1).map(p => [p[0], p[1]])
+      : [[sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]];
 
     if (c !== col) {
       if (seg.length >= 2)
         lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85,
           lineJoin: 'round', lineCap: 'butt' }));
-      col = c; seg = [[sm[i][0], sm[i][1]]];
+      col = c;
+      seg = sub.slice();
+    } else {
+      // Verleng huidig segment; eerste punt overlapt laatste vorige
+      if (sub.length > 1) seg.push(...sub.slice(1));
     }
-    seg.push([sm[i+1][0], sm[i+1][1]]);
   }
   if (seg.length >= 2)
     lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round' }));
