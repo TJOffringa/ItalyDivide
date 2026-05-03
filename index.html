@@ -284,6 +284,36 @@
     .pu-track-btn:hover { border-color: var(--dim); color: var(--text); }
     .pu-track-btn.active { background: rgba(74,222,128,.1); border-color: var(--green); color: var(--green); }
 
+    /* Kaartopties */
+    #map-opts-section { border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #map-opts-toggle {
+      width: 100%; padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer;
+      font-size: 11px; color: var(--muted); font-family: inherit;
+    }
+    #map-opts-toggle:hover { color: var(--text); }
+    #map-opts-body { display: none; padding: 6px 14px 10px; }
+    #map-opts-body.open { display: block; }
+    .map-opt-row {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--muted); cursor: pointer; padding: 3px 0;
+      user-select: none;
+    }
+    .map-opt-row input { accent-color: var(--accent); cursor: pointer; }
+    .map-opt-row:hover { color: var(--text); }
+    #gradient-msg { font-size: 10px; color: var(--muted); margin-top: 3px; min-height: 14px; }
+    #gradient-legend { margin-top: 8px; }
+    .grad-title { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 5px; }
+    .grad-bar { display: flex; gap: 2px; }
+    .grad-chip {
+      flex: 1; height: 20px; border-radius: 2px;
+      font-size: 8px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      font-variant-numeric: tabular-nums; color: #fff;
+    }
+    .grad-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); margin-top: 3px; }
+
     /* POI marker icon wrapper */
     .poi-icon { background: transparent !important; border: none !important; box-shadow: none !important; }
 
@@ -345,6 +375,36 @@
         <input type="checkbox" id="chk-stopped" checked> Gestopt
       </label>
       <button id="btn-refresh">↺</button>
+    </div>
+
+    <!-- Kaartopties -->
+    <div id="map-opts-section">
+      <button id="map-opts-toggle" onclick="toggleMapOpts()">
+        <span>🗺 Kaartopties</span><span id="map-opts-arrow">▸</span>
+      </button>
+      <div id="map-opts-body">
+        <label class="map-opt-row">
+          <input type="checkbox" id="chk-gradient" onchange="onGradientToggle()">
+          <span>Hellingshoek tonen</span>
+        </label>
+        <div id="gradient-msg"></div>
+        <div id="gradient-legend" style="display:none">
+          <div class="grad-title">Helling (%)</div>
+          <div class="grad-bar">
+            <div class="grad-chip" style="background:#1e3a8a" title="steile afdaling (≤ -8%)">≤-8</div>
+            <div class="grad-chip" style="background:#2563eb" title="afdaling (-8 tot -4%)">-5</div>
+            <div class="grad-chip" style="background:#93c5fd;color:#111" title="lichte afdaling (-4 tot -1.5%)">-2</div>
+            <div class="grad-chip" style="background:#4ade80;color:#111" title="vlak (-1.5 tot +1.5%)">0</div>
+            <div class="grad-chip" style="background:#fde047;color:#111" title="lichte stijging (1.5 tot 4%)">+2</div>
+            <div class="grad-chip" style="background:#f97316" title="matige stijging (4 tot 8%)">+5</div>
+            <div class="grad-chip" style="background:#ef4444" title="steile stijging (8 tot 12%)">+9</div>
+            <div class="grad-chip" style="background:#111827;border:1px solid #555" title="zeer steil (> 12%)">+12</div>
+          </div>
+          <div class="grad-labels">
+            <span>⬇ Afdaling</span><span>Vlak</span><span>Stijging ⬆</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- POI zoeker -->
@@ -1075,6 +1135,108 @@ window.toggleTrack = async function(id) {
   const r = riders.find(x => x.id === id);
   if (r && mkrs[id]) mkrs[id].setPopupContent(popupHtml(r));
 };
+
+// ── Hellingshoek (gradient) ───────────────────────────────────────────
+let gradientPts  = null;   // [lat, lon, ele] array, lazy-loaded
+let gradientLines = [];    // active Leaflet polylines
+
+const GRAD_STOPS = [
+  [-8,        '#1e3a8a'],  // steile afdaling
+  [-4,        '#2563eb'],  // afdaling
+  [-1.5,      '#93c5fd'],  // lichte afdaling
+  [ 1.5,      '#4ade80'],  // vlak
+  [ 4,        '#fde047'],  // lichte stijging
+  [ 8,        '#f97316'],  // matige stijging
+  [12,        '#ef4444'],  // steile stijging
+  [Infinity,  '#111827'],  // zeer steil
+];
+
+function gradColor(pct) {
+  for (const [max, col] of GRAD_STOPS) if (pct < max) return col;
+  return '#111827';
+}
+
+function buildGradientLines(pts) {
+  // Rolling elevation smoothing (window ±2)
+  const sm = pts.map((p, i) => {
+    const s = Math.max(0, i - 2), e = Math.min(pts.length - 1, i + 2);
+    let sum = 0, n = 0;
+    for (let j = s; j <= e; j++) { sum += pts[j][2]; n++; }
+    return [p[0], p[1], sum / n];
+  });
+
+  const lines = [];
+  let col = null, seg = [];
+
+  for (let i = 0; i < sm.length - 1; i++) {
+    const distKm = hav(sm[i][0], sm[i][1], sm[i+1][0], sm[i+1][1]);
+    // gradient in %, skip micro-segments to avoid division noise
+    const grad = distKm > 0.03 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
+    const c = gradColor(grad);
+
+    if (c !== col) {
+      if (seg.length >= 2)
+        lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85,
+          lineJoin: 'round', lineCap: 'butt' }));
+      col = c; seg = [[sm[i][0], sm[i][1]]];
+    }
+    seg.push([sm[i+1][0], sm[i+1][1]]);
+  }
+  if (seg.length >= 2)
+    lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round' }));
+  return lines;
+}
+
+window.onGradientToggle = async function() {
+  const on  = document.getElementById('chk-gradient').checked;
+  const msg = document.getElementById('gradient-msg');
+  const leg = document.getElementById('gradient-legend');
+  localStorage.setItem('gradientOn', on ? '1' : '0');
+
+  gradientLines.forEach(l => l.remove());
+  gradientLines = [];
+
+  if (!on) { leg.style.display = 'none'; return; }
+
+  if (!gradientPts) {
+    msg.textContent = '⏳ Hoogte-data laden…';
+    try {
+      const res = await fetch('route-gradient.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      gradientPts = await res.json();
+      msg.textContent = '';
+    } catch(e) {
+      msg.textContent = `⚠ Laden mislukt: ${e.message}`;
+      document.getElementById('chk-gradient').checked = false;
+      return;
+    }
+  }
+
+  gradientLines = buildGradientLines(gradientPts);
+  gradientLines.forEach(l => l.addTo(map));
+  leg.style.display = 'block';
+};
+
+window.toggleMapOpts = function() {
+  const body  = document.getElementById('map-opts-body');
+  const arrow = document.getElementById('map-opts-arrow');
+  const open  = body.classList.toggle('open');
+  arrow.textContent = open ? '▾' : '▸';
+  localStorage.setItem('mapOptsOpen', open ? '1' : '0');
+};
+
+// Restore map-opts state from localStorage
+(function() {
+  if (localStorage.getItem('mapOptsOpen') === '1') {
+    document.getElementById('map-opts-body').classList.add('open');
+    document.getElementById('map-opts-arrow').textContent = '▾';
+  }
+  if (localStorage.getItem('gradientOn') === '1') {
+    document.getElementById('chk-gradient').checked = true;
+    // Delay until after map init
+    setTimeout(onGradientToggle, 500);
+  }
+})();
 
 // ── Boot ──────────────────────────────────────────────────────────────
 loadRoute().then(() => load());
