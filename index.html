@@ -568,6 +568,9 @@ function processRiders(data) {
         s.stopMs   = Math.max(s.stopMs   || 0, srv.stopMs   || 0);
         if (srv.firstSeen && (!s.firstSeen || srv.firstSeen < s.firstSeen))
           s.firstSeen = srv.firstSeen;
+        // Sync stopSince from server so we know the real start of the current stop
+        if (srv.stopSince && (!s.stopSince || srv.stopSince < s.stopSince))
+          s.stopSince = srv.stopSince;
       }
       s.prevLat = lat; s.prevLon = lon;
       s.raceKm  = raceKm;
@@ -952,7 +955,7 @@ window.removePoiLayer = function(key) {
 document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
 
 // ── Rider tracks ─────────────────────────────────────────────────────
-const riderTracks = {};  // id → { line, hourMarkers[] }
+const riderTracks = {};  // id → { line, hourMarkers[], stopMarkers[] }
 
 function drawHourMarkers(pts) {
   const markers = [];
@@ -1005,26 +1008,73 @@ function drawHourMarkers(pts) {
   return markers;
 }
 
+// Returns stops derived from time gaps in the track (retroactive)
+function extractStopsFromTrack(pts) {
+  const stops = [];
+  const timed = pts.filter(p => p[2]);
+  for (let i = 0; i < timed.length - 1; i++) {
+    const gap = timed[i + 1][2] - timed[i][2];
+    if (gap > 10 * 60000) {
+      stops.push({ lat: timed[i][0], lon: timed[i][1], startMs: timed[i][2], durationMs: gap, ongoing: false });
+    }
+  }
+  return stops;
+}
+
+function drawStopMarkers(stops) {
+  console.log('[stops] drawStopMarkers aangeroepen met', stops.length, 'stops');
+  return stops.map((stop, i) => {
+    const dur   = durStr(stop.durationMs);
+    const time  = new Date(stop.startMs).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
+    const color = stop.ongoing ? '#f87171' : '#f0a500';
+    console.log('[stops] marker', i, ':', dur, 'om', time, 'lat', stop.lat, 'lon', stop.lon);
+    const icon  = L.divIcon({
+      className: 'poi-icon',
+      html: `<div style="background:rgba(20,20,20,.95);border:2px solid ${color};border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;color:${color};white-space:nowrap;line-height:16px;box-shadow:0 2px 6px rgba(0,0,0,.8)">${dur}<br><span style="font-weight:400;font-size:10px;opacity:.9">${time}</span></div>`,
+      iconAnchor: [0, 8], iconSize: null, popupAnchor: [0, -10]
+    });
+    const m = L.marker([stop.lat, stop.lon], { icon, interactive: false }).addTo(map);
+    console.log('[stops] marker', i, 'toegevoegd aan kaart');
+    return m;
+  });
+}
+
 window.toggleTrack = async function(id) {
   if (riderTracks[id]) {
     riderTracks[id].line.remove();
     riderTracks[id].hourMarkers.forEach(m => m.remove());
+    riderTracks[id].stopMarkers.forEach(m => m.remove());
     delete riderTracks[id];
   } else {
     try {
       const res = await fetch(`${API_BASE}/api/track/${id}`);
       const pts = await res.json();
+      console.log('[stops] track geladen:', pts.length, 'punten');
       if (pts.length > 1) {
         const line = L.polyline(pts.map(p => [p[0], p[1]]), {
           color: '#4ade80', weight: 3, opacity: 0.8,
           lineJoin: 'round', lineCap: 'round'
         }).addTo(map);
         const hourMarkers = drawHourMarkers(pts);
-        riderTracks[id] = { line, hourMarkers };
+
+        const stops = extractStopsFromTrack(pts);
+        console.log('[stops] extractStopsFromTrack gevonden:', stops.length, 'stops');
+        const acc   = ACC[id] || {};
+        const rider = riders.find(x => x.id === id);
+        if (acc.stopSince && rider) {
+          const dur = Date.now() - acc.stopSince;
+          if (dur > 10 * 60000) {
+            const [lat, lon] = rider.latest_gps_point;
+            stops.push({ lat, lon, startMs: acc.stopSince, durationMs: dur, ongoing: true });
+          }
+        }
+        const stopMarkers = drawStopMarkers(stops);
+
+        riderTracks[id] = { line, hourMarkers, stopMarkers };
         map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
       }
     } catch(e) {
-      console.error('Track error:', e);
+      console.error('[stops] Track error:', e);
     }
   }
   // Refresh popup content to update button state
