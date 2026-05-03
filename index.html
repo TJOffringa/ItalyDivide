@@ -1022,20 +1022,16 @@ function extractStopsFromTrack(pts) {
 }
 
 function drawStopMarkers(stops) {
-  console.log('[stops] drawStopMarkers aangeroepen met', stops.length, 'stops');
-  return stops.map((stop, i) => {
+  return stops.map(stop => {
     const dur   = durStr(stop.durationMs);
     const time  = new Date(stop.startMs).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
     const color = stop.ongoing ? '#f87171' : '#f0a500';
-    console.log('[stops] marker', i, ':', dur, 'om', time, 'lat', stop.lat, 'lon', stop.lon);
     const icon  = L.divIcon({
       className: 'poi-icon',
       html: `<div style="background:rgba(20,20,20,.95);border:2px solid ${color};border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;color:${color};white-space:nowrap;line-height:16px;box-shadow:0 2px 6px rgba(0,0,0,.8)">${dur}<br><span style="font-weight:400;font-size:10px;opacity:.9">${time}</span></div>`,
       iconAnchor: [0, 8], iconSize: null, popupAnchor: [0, -10]
     });
-    const m = L.marker([stop.lat, stop.lon], { icon, interactive: false }).addTo(map);
-    console.log('[stops] marker', i, 'toegevoegd aan kaart');
-    return m;
+    return L.marker([stop.lat, stop.lon], { icon, interactive: false }).addTo(map);
   });
 }
 
@@ -1049,7 +1045,6 @@ window.toggleTrack = async function(id) {
     try {
       const res = await fetch(`${API_BASE}/api/track/${id}`);
       const pts = await res.json();
-      console.log('[stops] track geladen:', pts.length, 'punten');
       if (pts.length > 1) {
         const line = L.polyline(pts.map(p => [p[0], p[1]]), {
           color: '#4ade80', weight: 3, opacity: 0.8,
@@ -1058,7 +1053,6 @@ window.toggleTrack = async function(id) {
         const hourMarkers = drawHourMarkers(pts);
 
         const stops = extractStopsFromTrack(pts);
-        console.log('[stops] extractStopsFromTrack gevonden:', stops.length, 'stops');
         const acc   = ACC[id] || {};
         const rider = riders.find(x => x.id === id);
         if (acc.stopSince && rider) {
@@ -1074,7 +1068,7 @@ window.toggleTrack = async function(id) {
         map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
       }
     } catch(e) {
-      console.error('[stops] Track error:', e);
+      console.error('Track error:', e);
     }
   }
   // Refresh popup content to update button state
