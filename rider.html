@@ -411,7 +411,7 @@ function renderResults(pts) {
   pts.forEach(p => {
     const m = L.marker([p.lat, p.lon], { icon: mkIcon })
       .addTo(map)
-      .bindPopup(`<b style="color:${DOT_COLOR}">${p.name}</b>${p.address ? '<br><small>' + p.address + '</small>' : ''}<br><small>${p.kmAhead >= 0 ? '+' + p.kmAhead.toFixed(1) + ' km vooruit op route' : p.kmAhead.toFixed(1) + ' km op route'}</small>`);
+      .bindPopup(`<b style="color:${DOT_COLOR}">${p.name}</b>${p.address ? '<br><small>' + p.address + '</small>' : ''}<br><small>${p.kmAhead >= 0 ? '+' + p.kmAhead.toFixed(1) + ' km vooruit op route' : p.kmAhead.toFixed(1) + ' km op route'} · ${p.distFromRoute.toFixed(2)} km van route</small>`);
     poiMarkers.push(m);
 
     const kmLabel = p.kmAhead >= 0
