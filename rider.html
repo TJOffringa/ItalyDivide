@@ -268,17 +268,18 @@ async function loadRiders() {
     const res  = await fetch(`${API_BASE}/api/riders?_=` + Date.now());
     const data = await res.json();
     riders = (data.riders || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    const sel   = document.getElementById('rider-select');
-    const saved = localStorage.getItem('riderView_id');
+    const sel      = document.getElementById('rider-select');
+    const urlId    = new URLSearchParams(location.search).get('id');
+    const targetId = urlId || localStorage.getItem('riderView_id');
     riders.forEach(r => {
       const o = document.createElement('option');
       o.value = r.id; o.textContent = r.name;
-      if (r.id === saved) o.selected = true;
+      if (r.id === targetId) o.selected = true;
       sel.appendChild(o);
     });
-    if (saved) {
-      const r = riders.find(x => x.id === saved);
-      if (r) applyRider(r);
+    if (targetId) {
+      const r = riders.find(x => x.id === targetId);
+      if (r) { localStorage.setItem('riderView_id', r.id); applyRider(r); }
     }
   } catch(e) {
     setStatus('Kon rijders niet laden: ' + e.message);

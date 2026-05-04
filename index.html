@@ -137,6 +137,13 @@
       border-radius: 3px; cursor: pointer; transition: .12s;
     }
     #btn-refresh:hover { border-color: var(--dim); color: var(--text); }
+    #btn-rider-view {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-size: 13px; padding: 3px 7px;
+      border-radius: 3px; cursor: pointer; transition: .12s;
+      text-decoration: none; line-height: 1.6; display: inline-flex; align-items: center;
+    }
+    #btn-rider-view:hover { border-color: var(--dim); color: var(--text); }
 
     /* POI search */
     #poi-section {
@@ -373,6 +380,7 @@
         <input type="checkbox" id="chk-stopped" checked> Gestopt
       </label>
       <button id="btn-refresh">↺</button>
+      <a href="rider.html" id="btn-rider-view" title="Rijder zoeker">🔍</a>
     </div>
 
     <!-- Kaartopties -->
@@ -449,7 +457,6 @@
     <div id="footer">
       <span id="update-time">—</span>
       <span id="next-refresh"></span>
-      <a href="rider.html" style="color:var(--muted);font-size:10px;text-decoration:none;margin-left:auto" title="Rijder zoeker">🔍 Rijder zoeker</a>
     </div>
   </div>
 
@@ -601,7 +608,10 @@ function popupHtml(r) {
     <div class="pu-note">* Gevolgd sinds ${new Date(acc.firstSeen || STARTED_AT).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}${pct > 0 ? ' · ' + pct + '% gereden' : ''}</div>
     <button class="pu-track-btn${riderTracks[r.id] ? ' active' : ''}" onclick="toggleTrack('${r.id}')">
       ${riderTracks[r.id] ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
-    </button>`;
+    </button>
+    <a class="pu-track-btn" href="rider.html?id=${encodeURIComponent(r.id)}" style="display:block;text-align:center;text-decoration:none;margin-top:4px">
+      🔍 Zoek in de buurt van deze rijder
+    </a>`;
 }
 
 // ── Data processing ───────────────────────────────────────────────────
