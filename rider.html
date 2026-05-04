@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+  <title>Italy Divide – Rijder Zoeker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d27;
+      --border:  #2a2d3a;
+      --text:    #e8e9ed;
+      --muted:   #6b7280;
+      --accent:  #4ade80;
+      --yellow:  #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      min-height: 100dvh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    #header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    #header h1 { font-size: 15px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+    #back-link { font-size: 12px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+    #back-link:hover { color: var(--text); }
+
+    /* ── Rider selector ─────────────────────────────────────────────── */
+    #rider-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #rider-bar label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    #rider-select {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 14px;
+      min-width: 0;
+    }
+    #rider-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    #rider-badge.moving { background: rgba(74,222,128,.15); color: var(--accent); }
+
+    /* ── Map ─────────────────────────────────────────────────────────── */
+    #map { height: 42vh; min-height: 180px; }
+
+    /* ── Search panel ────────────────────────────────────────────────── */
+    #search-panel { padding: 14px 16px 0; }
+
+    .sec-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* chips */
+    #chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 5px 11px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background .1s, border-color .1s, color .1s;
+      white-space: nowrap;
+      color: var(--text);
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+    .chip.active { background: var(--accent); color: #0f1117; border-color: var(--accent); }
+
+    /* text + button */
+    #search-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    #search-input {
+      flex: 1; min-width: 0;
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 12px; font-size: 14px;
+    }
+    #search-input::placeholder { color: var(--muted); }
+    #search-input:focus { outline: none; border-color: var(--accent); }
+    #search-btn {
+      padding: 8px 18px;
+      background: var(--accent); color: #0f1117;
+      border: none; border-radius: 6px;
+      font-size: 14px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    #search-btn:hover { opacity: .85; }
+    #search-btn:disabled { opacity: .45; cursor: default; }
+
+    /* sliders */
+    .slider-block { margin-bottom: 12px; }
+    .slider-lbl {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--muted); margin-bottom: 4px;
+    }
+    .slider-lbl strong { color: var(--text); font-weight: 600; }
+    input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+    /* ── Status ──────────────────────────────────────────────────────── */
+    #status {
+      padding: 8px 16px 4px;
+      font-size: 12px; color: var(--muted); min-height: 24px;
+    }
+
+    /* ── Results ─────────────────────────────────────────────────────── */
+    #results { padding: 4px 16px 32px; }
+    .res-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 6px;
+      cursor: pointer; transition: border-color .1s;
+    }
+    .res-item:hover { border-color: var(--accent); }
+    .res-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .res-info { flex: 1; min-width: 0; }
+    .res-name {
+      font-size: 13px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .res-addr {
+      font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .res-dist { font-size: 13px; font-weight: 700; color: var(--yellow); white-space: nowrap; }
+
+    /* Leaflet dark overrides */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.55);
+    }
+    .leaflet-popup-tip { background: var(--surface); }
+    .leaflet-popup-content { font-size: 12px; line-height: 1.7; margin: 10px 14px; }
+    .leaflet-popup-close-button { color: var(--muted) !important; }
+    .poi-icon { background: transparent !important; border: none !important; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🏔 Italy Divide — Rijder Zoeker</h1>
+  <a id="back-link" href="index.html">← Tracker</a>
+</div>
+
+<div id="rider-bar">
+  <label for="rider-select">Ik ben:</label>
+  <select id="rider-select">
+    <option value="">— Kies rijder —</option>
+  </select>
+  <div id="rider-badge">—</div>
+</div>
+
+<div id="map"></div>
+
+<div id="search-panel">
+  <div class="sec-title">Zoek in de buurt</div>
+
+  <div id="chips">
+    <button class="chip" onclick="pickChip(this,'hotel')">🛏 Hotel</button>
+    <button class="chip" onclick="pickChip(this,'camping')">⛺ Camping</button>
+    <button class="chip" onclick="pickChip(this,'hostel')">🏠 Hostel</button>
+    <button class="chip" onclick="pickChip(this,'restaurant')">🍽 Restaurant</button>
+    <button class="chip" onclick="pickChip(this,'cafe')">☕ Café</button>
+    <button class="chip" onclick="pickChip(this,'pizzeria')">🍕 Pizzeria</button>
+    <button class="chip" onclick="pickChip(this,'fastfood')">🍔 Fastfood</button>
+    <button class="chip" onclick="pickChip(this,'bar')">🍺 Bar</button>
+    <button class="chip" onclick="pickChip(this,'supermarkt')">🛒 Supermarkt</button>
+    <button class="chip" onclick="pickChip(this,'bakker')">🥖 Bakker</button>
+    <button class="chip" onclick="pickChip(this,'tankstation')">⛽ Tankstation</button>
+    <button class="chip" onclick="pickChip(this,'fietsenmaker')">🚲 Fietsenmaker</button>
+    <button class="chip" onclick="pickChip(this,'atm')">🏧 ATM</button>
+    <button class="chip" onclick="pickChip(this,'apotheek')">💊 Apotheek</button>
+    <button class="chip" onclick="pickChip(this,'drinkwater')">💧 Drinkwater</button>
+    <button class="chip" onclick="pickChip(this,'toiletten')">🚽 Toiletten</button>
+  </div>
+
+  <div id="search-row">
+    <input id="search-input" type="text" placeholder="Of typ eigen zoekterm…" autocomplete="off">
+    <button id="search-btn" onclick="doSearch()">Zoek</button>
+  </div>
+
+  <div class="slider-block">
+    <div class="slider-lbl">
+      Afstand van mijn positie
+      <strong id="radius-lbl">50 km</strong>
+    </div>
+    <input type="range" id="radius-sl" min="1" max="200" value="50" step="1"
+           oninput="updateRadiusLabel(this.value)">
+  </div>
+
+  <div class="slider-block">
+    <div class="slider-lbl">
+      Max. afstand van route
+      <strong id="maxdist-lbl">2.0 km</strong>
+    </div>
+    <input type="range" id="maxdist-sl" min="1" max="100" value="20" step="1"
+           oninput="updateMaxdistLabel(this.value)">
+  </div>
+</div>
+
+<div id="status"></div>
+<div id="results"></div>
+
+<script>
+const API_BASE  = 'https://tracker.klikschaak.nl';
+const DOT_COLOR = '#f59e0b';
+
+// ── Map ────────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([43.5, 12.5], 7);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CartoDB',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+fetch(`${API_BASE}/api/route`)
+  .then(r => r.json())
+  .then(pts => {
+    if (pts && pts.length)
+      L.polyline(pts, { color: '#4ade80', weight: 2, opacity: 0.45 }).addTo(map);
+  });
+
+let riderMarker  = null;
+let radiusCircle = null;
+let poiMarkers   = [];
+
+// ── Riders ────────────────────────────────────────────────────────────
+let riders = [];
+let selRider = null;
+
+async function loadRiders() {
+  try {
+    const res  = await fetch(`${API_BASE}/api/riders?_=` + Date.now());
+    const data = await res.json();
+    riders = (data.riders || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const sel   = document.getElementById('rider-select');
+    const saved = localStorage.getItem('riderView_id');
+    riders.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.id; o.textContent = r.name;
+      if (r.id === saved) o.selected = true;
+      sel.appendChild(o);
+    });
+    if (saved) {
+      const r = riders.find(x => x.id === saved);
+      if (r) applyRider(r);
+    }
+  } catch(e) {
+    setStatus('Kon rijders niet laden: ' + e.message);
+  }
+}
+
+function applyRider(r) {
+  selRider = r;
+  const [lat, lon] = r.latest_gps_point || [0, 0];
+  const mv  = r.motionType === 'MOVING';
+  const spd = r.speed ? (r.speed * 3.6).toFixed(0) : null;
+
+  const badge = document.getElementById('rider-badge');
+  badge.textContent = mv && spd ? `▶ ${spd} km/h` : '◼ Gestopt';
+  badge.className   = 'rider-badge' + (mv ? ' moving' : '');
+
+  if (riderMarker) riderMarker.remove();
+  riderMarker = L.marker([lat, lon], {
+    icon: L.divIcon({
+      className: 'poi-icon',
+      html: `<div style="width:22px;height:22px;border-radius:50%;background:#4ade80;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.7)"></div>`,
+      iconSize: [22, 22], iconAnchor: [11, 11]
+    })
+  }).addTo(map).bindPopup(`<b>${r.name}</b><br>${mv && spd ? spd + ' km/h' : 'Gestopt'}`);
+
+  drawCircle(lat, lon);
+  map.setView([lat, lon], 11);
+}
+
+function drawCircle(lat, lon) {
+  if (radiusCircle) radiusCircle.remove();
+  const km = parseInt(document.getElementById('radius-sl').value);
+  radiusCircle = L.circle([lat, lon], {
+    radius: km * 1000,
+    color: '#4ade80', fillColor: '#4ade80',
+    fillOpacity: 0.04, weight: 1, dashArray: '5 5'
+  }).addTo(map);
+}
+
+document.getElementById('rider-select').addEventListener('change', function() {
+  const r = riders.find(x => x.id === this.value);
+  if (!r) return;
+  localStorage.setItem('riderView_id', r.id);
+  applyRider(r);
+  clearResults();
+});
+
+// ── Sliders ───────────────────────────────────────────────────────────
+function updateRadiusLabel(v) {
+  document.getElementById('radius-lbl').textContent = v + ' km';
+  if (selRider) {
+    const [lat, lon] = selRider.latest_gps_point || [0, 0];
+    drawCircle(lat, lon);
+  }
+}
+function updateMaxdistLabel(v) {
+  document.getElementById('maxdist-lbl').textContent = (v / 10).toFixed(1) + ' km';
+}
+
+// ── Chips ─────────────────────────────────────────────────────────────
+let activeChip = null;
+function pickChip(btn, term) {
+  if (activeChip && activeChip !== btn) activeChip.classList.remove('active');
+  const on = btn.classList.toggle('active');
+  activeChip = on ? btn : null;
+  document.getElementById('search-input').value = on ? term : '';
+}
+document.getElementById('search-input').addEventListener('input', function() {
+  if (activeChip) { activeChip.classList.remove('active'); activeChip = null; }
+});
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// ── Search ────────────────────────────────────────────────────────────
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+function clearResults() {
+  poiMarkers.forEach(m => m.remove());
+  poiMarkers = [];
+  document.getElementById('results').innerHTML = '';
+  setStatus('');
+}
+
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if (!q)         { setStatus('Voer een zoekterm in.'); return; }
+  if (!selRider)  { setStatus('Kies eerst een rijder.'); return; }
+
+  const [lat, lon] = selRider.latest_gps_point || [0, 0];
+  if (!lat && !lon) { setStatus('Geen GPS-positie bekend voor deze rijder.'); return; }
+
+  const radius  = document.getElementById('radius-sl').value;
+  const maxdist = (document.getElementById('maxdist-sl').value / 10).toFixed(1);
+
+  clearResults();
+  setStatus('⏳ Zoeken…');
+  document.getElementById('search-btn').disabled = true;
+
+  try {
+    const url = `${API_BASE}/api/poi-rider?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lon}&radius=${radius}&maxdist=${maxdist}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const pts  = data.results || [];
+
+    if (!pts.length) {
+      setStatus(`Niets gevonden voor "${q}" binnen ${radius} km van positie en ${maxdist} km van route.`);
+      return;
+    }
+
+    setStatus(`✓ ${pts.length} resultaten — gesorteerd op afstand van jouw positie`);
+    renderResults(pts);
+  } catch(e) {
+    setStatus('Fout: ' + e.message);
+  } finally {
+    document.getElementById('search-btn').disabled = false;
+  }
+}
+
+function renderResults(pts) {
+  const mkIcon = L.divIcon({
+    className: 'poi-icon',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:${DOT_COLOR};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.6)"></div>`,
+    iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -9]
+  });
+
+  const list = document.getElementById('results');
+  pts.forEach(p => {
+    const m = L.marker([p.lat, p.lon], { icon: mkIcon })
+      .addTo(map)
+      .bindPopup(`<b style="color:${DOT_COLOR}">${p.name}</b>${p.address ? '<br><small>' + p.address + '</small>' : ''}<br><small>${p.distFromRider.toFixed(1)} km van jou</small>`);
+    poiMarkers.push(m);
+
+    const el = document.createElement('div');
+    el.className = 'res-item';
+    el.innerHTML = `
+      <div class="res-dot" style="background:${DOT_COLOR}"></div>
+      <div class="res-info">
+        <div class="res-name">${p.name}</div>
+        ${p.address ? `<div class="res-addr">${p.address}</div>` : ''}
+      </div>
+      <div class="res-dist">${p.distFromRider.toFixed(1)} km</div>`;
+    el.addEventListener('click', () => { map.setView([p.lat, p.lon], 14); m.openPopup(); });
+    list.appendChild(el);
+  });
+
+  // Fit map to results + rider
+  const [rLat, rLon] = selRider.latest_gps_point;
+  const bounds = L.latLngBounds([[rLat, rLon], ...pts.map(p => [p.lat, p.lon])]);
+  map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+loadRiders();
+</script>
+</body>
+</html>
