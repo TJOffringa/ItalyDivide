@@ -313,6 +313,8 @@
       font-variant-numeric: tabular-nums; color: #fff;
     }
     .grad-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); margin-top: 3px; }
+    #surface-msg { font-size: 10px; color: var(--muted); margin-top: 3px; min-height: 14px; }
+    #surface-legend { margin-top: 8px; }
 
     /* POI marker icon wrapper */
     .poi-icon { background: transparent !important; border: none !important; box-shadow: none !important; }
@@ -402,6 +404,24 @@
           </div>
           <div class="grad-labels">
             <span>⬇ Afdaling</span><span>Vlak</span><span>Stijging ⬆</span>
+          </div>
+        </div>
+        <label class="map-opt-row" style="margin-top:8px">
+          <input type="checkbox" id="chk-surface" onchange="onSurfaceToggle()">
+          <span>Verharding tonen</span>
+        </label>
+        <div id="surface-msg"></div>
+        <div id="surface-legend" style="display:none">
+          <div class="grad-title">Wegdek</div>
+          <div style="display:flex;gap:14px;margin-top:4px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+              <svg width="28" height="6"><line x1="0" y1="3" x2="28" y2="3" stroke="#e07800" stroke-width="4" stroke-linecap="round"/></svg>
+              <span>Verhard</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+              <svg width="28" height="6"><line x1="0" y1="3" x2="28" y2="3" stroke="#b45309" stroke-width="4" stroke-dasharray="7 5" stroke-linecap="round"/></svg>
+              <span>Onverhard</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1229,6 +1249,65 @@ window.onGradientToggle = async function() {
   leg.style.display = 'block';
 };
 
+// ── Verharding (surface) ──────────────────────────────────────────────
+let surfacePts   = null;   // [0|1] per routePt, lazy-loaded
+let surfaceLines = [];     // active Leaflet polylines
+
+window.onSurfaceToggle = async function() {
+  const on  = document.getElementById('chk-surface').checked;
+  const msg = document.getElementById('surface-msg');
+  const leg = document.getElementById('surface-legend');
+  localStorage.setItem('surfaceOn', on ? '1' : '0');
+
+  surfaceLines.forEach(l => l.remove());
+  surfaceLines = [];
+
+  if (!on) { leg.style.display = 'none'; return; }
+
+  if (!surfacePts) {
+    msg.textContent = '⏳ Verharding-data laden…';
+    try {
+      const res = await fetch('route-surface.json');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      surfacePts = await res.json();
+      msg.textContent = '';
+    } catch(e) {
+      msg.textContent = `⚠ Laden mislukt: ${e.message}`;
+      document.getElementById('chk-surface').checked = false;
+      return;
+    }
+  }
+
+  surfaceLines = buildSurfaceLines(surfacePts);
+  surfaceLines.forEach(l => l.addTo(map));
+  leg.style.display = 'block';
+};
+
+function buildSurfaceLines(surf) {
+  if (!routePts.length || !surf.length) return [];
+  const lines = [];
+  let seg = null;
+  const len = Math.min(routePts.length, surf.length);
+
+  for (let i = 0; i <= len; i++) {
+    const unpaved = i < len && surf[i] === 1;
+    if (!unpaved) {
+      if (seg && seg.length >= 2) {
+        lines.push(L.polyline(seg, {
+          color: '#b45309', weight: 5, opacity: .9,
+          dashArray: '8 5', lineJoin: 'round', lineCap: 'round'
+        }));
+      }
+      seg = null;
+    } else {
+      const pt = [routePts[i][0], routePts[i][1]];
+      if (!seg) seg = [pt];
+      else seg.push(pt);
+    }
+  }
+  return lines;
+}
+
 window.toggleMapOpts = function() {
   const body  = document.getElementById('map-opts-body');
   const arrow = document.getElementById('map-opts-arrow');
@@ -1247,6 +1326,10 @@ window.toggleMapOpts = function() {
     document.getElementById('chk-gradient').checked = true;
     // Delay until after map init
     setTimeout(onGradientToggle, 500);
+  }
+  if (localStorage.getItem('surfaceOn') === '1') {
+    document.getElementById('chk-surface').checked = true;
+    setTimeout(onSurfaceToggle, 600);
   }
 })();
 
