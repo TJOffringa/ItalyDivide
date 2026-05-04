@@ -359,10 +359,6 @@
         <div class="stat-lbl">Rijdend</div>
         <div class="stat-val green" id="sv-mv">—</div>
       </div>
-      <div class="stat">
-        <div class="stat-lbl">Gestopt</div>
-        <div class="stat-val dim" id="sv-st">—</div>
-      </div>
     </div>
 
     <div id="controls">
@@ -596,14 +592,6 @@ function popupHtml(r) {
         <div class="pu-cell-lbl">Hoogte</div>
         <div class="pu-cell-val">${(r.altitude||0).toFixed(0)} m</div>
       </div>
-      <div class="pu-cell">
-        <div class="pu-cell-lbl">Rijdtijd*</div>
-        <div class="pu-cell-val ${ridingMs > 60000 ? '' : 'muted'}">${durStr(ridingMs)}</div>
-      </div>
-      <div class="pu-cell">
-        <div class="pu-cell-lbl">Stoptijd*</div>
-        <div class="pu-cell-val ${stopMs > 60000 ? '' : 'muted'}">${durStr(stopMs)}</div>
-      </div>
     </div>
     <div class="pu-cell" style="margin-top:0">
       <div class="pu-cell-lbl">Batterij</div>
@@ -747,7 +735,6 @@ function renderList() {
         <div class="rmeta">
           <span class="rspd ${mv ? 'mv' : ''}">${spd ? spd + ' km/h' : '—'}</span>
           ${(r.altitude||0) > 0 ? `<span>${Math.round(r.altitude)} m</span>` : ''}
-          ${stopMs > 60000 ? `<span style="color:var(--red)">${durStr(stopMs)} stop</span>` : ''}
           <span class="${batCls(bat)}">${bat}%</span>
         </div>
         ${distRow}
