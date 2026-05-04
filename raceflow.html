@@ -5,36 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Italy Divide – Race Flow</title>
   <style>
-    :root {
-      --bg: #0c0e16; --surface: #1a1d27; --border: #2a2d3a;
-      --text: #e8e9ed; --muted: #6b7280;  --accent: #4ade80;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; min-height: 100dvh; display: flex; flex-direction: column; }
+    :root { --bg:#09090f; --surface:#1a1d27; --border:#2a2d3a; --text:#e8e9ed; --muted:#6b7280; --accent:#4ade80; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; font-size:14px; min-height:100dvh; display:flex; flex-direction:column; }
 
-    #header {
-      background: var(--surface); border-bottom: 1px solid var(--border);
-      padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-    }
-    #header h1 { font-size: 15px; font-weight: 700; color: var(--accent); }
-    #back-link { font-size: 12px; color: var(--muted); text-decoration: none; }
-    #back-link:hover { color: var(--text); }
+    #header { background:var(--surface); border-bottom:1px solid var(--border); padding:10px 16px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+    #header h1 { font-size:15px; font-weight:700; color:var(--accent); }
+    #back-link { font-size:12px; color:var(--muted); text-decoration:none; }
+    #back-link:hover { color:var(--text); }
 
-    #chart-wrap {
-      flex: 1; padding: 12px 16px 4px;
-      display: flex; align-items: stretch; justify-content: center;
-    }
-    #chart { width: 100%; height: auto; display: block; max-height: calc(100dvh - 100px); }
+    #chart-wrap { flex:1; padding:12px 16px 4px; display:flex; align-items:center; justify-content:center; }
+    #chart { width:100%; height:auto; display:block; max-height:calc(100dvh - 96px); }
 
-    #footer {
-      padding: 6px 16px 10px; font-size: 11px; color: var(--muted);
-      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
-    }
-    #refresh-btn {
-      background: none; border: 1px solid var(--border); color: var(--muted);
-      font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-family: inherit;
-    }
-    #refresh-btn:hover { color: var(--text); border-color: var(--muted); }
+    #footer { padding:6px 16px 10px; font-size:11px; color:var(--muted); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    #refresh-btn { background:none; border:1px solid var(--border); color:var(--muted); font-size:11px; padding:3px 8px; border-radius:4px; cursor:pointer; font-family:inherit; }
+    #refresh-btn:hover { color:var(--text); border-color:var(--muted); }
   </style>
 </head>
 <body>
@@ -45,7 +30,7 @@
 </div>
 
 <div id="chart-wrap">
-  <svg id="chart" viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+  <svg id="chart" viewBox="0 0 980 540" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
 
 <div id="footer">
@@ -57,16 +42,15 @@
 <script>
 'use strict';
 const API_BASE = 'https://tracker.klikschaak.nl';
-const COLORS   = ['#4ade80', '#38bdf8', '#f59e0b', '#f87171', '#a78bfa'];
+const COLORS   = ['#f59e0b','#38bdf8','#f87171','#4ade80','#a78bfa'];
 
-const W = 960, H = 520;
-const P = { t: 30, r: 152, b: 48, l: 60 };  // padding
+const W = 980, H = 540;
+const P = { t:30, r:60, b:52, l:66 };
 const CW = W - P.l - P.r;
 const CH = H - P.t - P.b;
 
 let cdTimer;
 
-// ── Load & auto-refresh ───────────────────────────────────────────────
 async function load() {
   clearInterval(cdTimer);
   document.getElementById('countdown').textContent = '';
@@ -78,7 +62,7 @@ async function load() {
     if (data.error) throw new Error(data.error);
     draw(data);
     document.getElementById('status').textContent =
-      `Top ${data.riders.length} rijders · bijgewerkt ${new Date().toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'})}`;
+      `Top ${data.riders.length} rijders · ${new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
     let s = 60;
     cdTimer = setInterval(() => {
       document.getElementById('countdown').textContent = `↺ ${--s}s`;
@@ -89,104 +73,97 @@ async function load() {
   }
 }
 
-// ── Chart rendering ───────────────────────────────────────────────────
-function draw({ riders, totalKm }) {
-  const svg = document.getElementById('chart');
-  const now = Date.now();
+function draw({ riders, totalKm, raceStart }) {
+  const svg  = document.getElementById('chart');
+  const now  = Date.now();
   const allPts = riders.flatMap(r => r.pts);
   if (!allPts.length) { svg.innerHTML = ''; return; }
 
-  const tMin = Math.min(...allPts.map(p => p[0]));
-  const tMax = now;
+  // X-axis: hours since race start
+  const maxHrs = Math.ceil((now - raceStart) / 3600000) + 1;
+  const kmTop  = Math.ceil((totalKm || Math.max(...allPts.map(p => p[1]))) / 200) * 200;
 
-  // Y-axis: 0 → rounded-up totalKm
-  const kmTop = Math.ceil((totalKm || Math.max(...allPts.map(p => p[1]))) / 200) * 200;
-
-  const sx = t  => P.l + (t - tMin) / (tMax - tMin) * CW;
-  const sy = km => P.t + CH - (km / kmTop) * CH;
+  const sx  = hrs => P.l + (hrs / maxHrs) * CW;
+  const sy  = km  => P.t + CH - (km / kmTop) * CH;
+  const tHr = t   => (t - raceStart) / 3600000;
 
   let h = '';
 
-  // ── Backgrounds ─────────────────────────────────────────────────
+  // ── Backgrounds ────────────────────────────────────────────────
   h += `<rect width="${W}" height="${H}" fill="#09090f"/>`;
   h += `<rect x="${P.l}" y="${P.t}" width="${CW}" height="${CH}" fill="#0c0e16"/>`;
 
-  // ── Night shading (20:00-07:00 bands) ───────────────────────────
-  const DAY_MS = 86400000;
-  const nightStart = t => { const d = new Date(t); d.setHours(20, 0, 0, 0); return d.getTime(); };
-  const nightEnd   = t => { const d = new Date(t); d.setHours(7, 0, 0, 0); return d.getTime() + DAY_MS; };
-
-  let ns = Math.floor(tMin / DAY_MS) * DAY_MS;
-  for (let i = 0; i < 12; i++) {
-    const s0 = nightStart(ns + i * DAY_MS);
-    const s1 = nightEnd(ns + i * DAY_MS);
-    if (s1 < tMin || s0 > tMax) continue;
-    const x0 = Math.max(sx(s0), P.l), x1 = Math.min(sx(s1), P.l + CW);
+  // ── Night bands (20:00–07:00 local Italy time) ─────────────────
+  for (let day = -1; day <= Math.ceil(maxHrs / 24) + 1; day++) {
+    const base = new Date(raceStart + day * 86400000);
+    base.setHours(0, 0, 0, 0);
+    const nightS = new Date(base); nightS.setHours(20, 0, 0, 0);
+    const nightE = new Date(base.getTime() + 86400000); nightE.setHours(7, 0, 0, 0);
+    const hs = tHr(nightS.getTime()), he = tHr(nightE.getTime());
+    if (he < 0 || hs > maxHrs) continue;
+    const x0 = sx(Math.max(hs, 0)), x1 = sx(Math.min(he, maxHrs));
     if (x1 > x0)
-      h += `<rect x="${x0.toFixed(1)}" y="${P.t}" width="${(x1-x0).toFixed(1)}" height="${CH}" fill="rgba(255,255,255,0.025)"/>`;
+      h += `<rect x="${x0.toFixed(1)}" y="${P.t}" width="${(x1-x0).toFixed(1)}" height="${CH}" fill="rgba(255,255,255,.025)"/>`;
   }
 
-  // ── Y grid (km) ─────────────────────────────────────────────────
+  // ── Y grid (km) ────────────────────────────────────────────────
   const kmStep = kmTop <= 800 ? 100 : 200;
   for (let km = 0; km <= kmTop; km += kmStep) {
     const y = sy(km).toFixed(1);
-    h += `<line x1="${P.l}" y1="${y}" x2="${P.l + CW}" y2="${y}" stroke="#161820" stroke-width="1"/>`;
-    h += `<text x="${P.l - 7}" y="${+y + 4}" text-anchor="end" fill="#4b5563" font-size="10" font-family="system-ui,sans-serif">${km}</text>`;
+    h += `<line x1="${P.l}" y1="${y}" x2="${P.l+CW}" y2="${y}" stroke="#161820" stroke-width="1"/>`;
+    h += `<text x="${P.l-8}" y="${+y+4}" text-anchor="end" fill="#4b5563" font-size="10" font-family="system-ui,sans-serif">${km} km</text>`;
   }
 
-  // ── X grid (time) ───────────────────────────────────────────────
-  const spanMs = tMax - tMin;
-  const tickMs = spanMs < 86400000   ? 3600000 * 2  :
-                 spanMs < 259200000  ? 3600000 * 6  :
-                 spanMs < 604800000  ? 3600000 * 12 : 3600000 * 24;
-  const firstTick = Math.ceil(tMin / tickMs) * tickMs;
-  for (let t = firstTick; t <= tMax; t += tickMs) {
-    const x = sx(t).toFixed(1);
-    h += `<line x1="${x}" y1="${P.t}" x2="${x}" y2="${P.t + CH}" stroke="#161820" stroke-width="1"/>`;
-    const lbl = new Date(t).toLocaleString('nl-NL', {
-      weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome'
-    });
-    h += `<text x="${x}" y="${P.t + CH + 15}" text-anchor="middle" fill="#4b5563" font-size="9" font-family="system-ui,sans-serif">${lbl}</text>`;
+  // ── X grid (hours) ─────────────────────────────────────────────
+  const hrStep = maxHrs <= 48 ? 6 : maxHrs <= 120 ? 12 : 24;
+  for (let hr = 0; hr <= maxHrs; hr += hrStep) {
+    const x = sx(hr).toFixed(1);
+    h += `<line x1="${x}" y1="${P.t}" x2="${x}" y2="${P.t+CH}" stroke="#161820" stroke-width="1"/>`;
+    h += `<text x="${x}" y="${P.t+CH+16}" text-anchor="middle" fill="#4b5563" font-size="10" font-family="system-ui,sans-serif">${hr}u</text>`;
   }
 
-  // ── Axes ─────────────────────────────────────────────────────────
-  h += `<line x1="${P.l}" y1="${P.t}" x2="${P.l}" y2="${P.t+CH}" stroke="#2a2d3a" stroke-width="1"/>`;
-  h += `<line x1="${P.l}" y1="${P.t+CH}" x2="${P.l+CW}" y2="${P.t+CH}" stroke="#2a2d3a" stroke-width="1"/>`;
-  h += `<text x="${P.l - 44}" y="${P.t + CH/2}" text-anchor="middle" fill="#4b5563" font-size="10" font-family="system-ui,sans-serif" transform="rotate(-90,${P.l-44},${P.t+CH/2})">Afstand (km)</text>`;
+  // ── Axes & border ──────────────────────────────────────────────
+  h += `<rect x="${P.l}" y="${P.t}" width="${CW}" height="${CH}" fill="none" stroke="#2a2d3a" stroke-width="1"/>`;
+  // X-axis label
+  h += `<text x="${P.l+CW/2}" y="${H-4}" text-anchor="middle" fill="#4b5563" font-size="10" font-family="system-ui,sans-serif">Uren na start</text>`;
+  // Y-axis label
+  h += `<text x="${P.l-48}" y="${P.t+CH/2}" text-anchor="middle" fill="#4b5563" font-size="10" font-family="system-ui,sans-serif" transform="rotate(-90,${P.l-48},${P.t+CH/2})">Afstand (km)</text>`;
 
-  // ── "Nu" marker ──────────────────────────────────────────────────
-  const nx = sx(now).toFixed(1);
+  // ── FINISH marker ──────────────────────────────────────────────
+  const fy = sy(totalKm).toFixed(1);
+  h += `<line x1="${P.l}" y1="${fy}" x2="${P.l+CW}" y2="${fy}" stroke="#374151" stroke-dasharray="4 4" stroke-width="1"/>`;
+  h += `<text x="${P.l+CW+6}" y="${+fy+4}" fill="#6b7280" font-size="10" font-weight="600" font-family="system-ui,sans-serif">FINISH</text>`;
+
+  // ── "Nu" marker ────────────────────────────────────────────────
+  const nx = sx(tHr(now)).toFixed(1);
   h += `<line x1="${nx}" y1="${P.t}" x2="${nx}" y2="${P.t+CH}" stroke="#374151" stroke-dasharray="3 3" stroke-width="1"/>`;
-  h += `<text x="${+nx - 4}" y="${P.t + 9}" text-anchor="end" fill="#4b5563" font-size="9" font-family="system-ui,sans-serif">nu</text>`;
+  h += `<text x="${+nx-4}" y="${P.t+10}" text-anchor="end" fill="#4b5563" font-size="9" font-family="system-ui,sans-serif">nu</text>`;
 
-  // ── Rider lines ──────────────────────────────────────────────────
-  const usedLabelY = [];
-
+  // ── Rider lines ────────────────────────────────────────────────
   riders.forEach((rider, i) => {
     const color = COLORS[i % COLORS.length];
     if (!rider.pts.length) return;
 
-    // Polyline
-    const coords = rider.pts.map(([t, km]) =>
-      `${sx(t).toFixed(1)},${sy(km).toFixed(1)}`).join(' ');
-    h += `<polyline points="${coords}" stroke="${color}" stroke-width="2.5" fill="none" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>`;
+    const coords = rider.pts
+      .map(([t, km]) => `${sx(tHr(t)).toFixed(1)},${sy(km).toFixed(1)}`)
+      .join(' ');
+    h += `<polyline points="${coords}" stroke="${color}" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>`;
 
-    // Current-position dot
+    // Dot at current position
     const [lt, lkm] = rider.pts[rider.pts.length - 1];
-    const lx = sx(lt), ly = sy(lkm);
-    h += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4.5" fill="${color}" stroke="#09090f" stroke-width="1.5"/>`;
-
-    // Label — nudge down to avoid overlap
-    let labelY = ly;
-    while (usedLabelY.some(y => Math.abs(y - labelY) < 13)) labelY += 13;
-    usedLabelY.push(labelY);
-
-    const rankLabel = `${i + 1}. ${rider.name}`;
-    h += `<text x="${lx + 9}" y="${labelY + 4}" fill="${color}" font-size="11" font-weight="600" font-family="system-ui,sans-serif">${rankLabel}</text>`;
+    h += `<circle cx="${sx(tHr(lt)).toFixed(1)}" cy="${sy(lkm).toFixed(1)}" r="4" fill="${color}" stroke="#09090f" stroke-width="1.5"/>`;
   });
 
-  // ── Title ─────────────────────────────────────────────────────────
-  h += `<text x="${P.l + CW / 2}" y="19" text-anchor="middle" fill="#374151" font-size="10" font-family="system-ui,sans-serif" letter-spacing="0.05em">TIJD vs. AFSTAND</text>`;
+  // ── Legend (top-left, inside chart) ───────────────────────────
+  const LX = P.l + 12, LY = P.t + 12;
+  const LH = 16, LW = 180;
+  h += `<rect x="${LX-6}" y="${LY-6}" width="${LW}" height="${riders.length*LH+8}" rx="4" fill="rgba(12,14,22,.85)" stroke="#2a2d3a" stroke-width="1"/>`;
+  riders.forEach((rider, i) => {
+    const color = COLORS[i % COLORS.length];
+    const ly = LY + i * LH + 4;
+    h += `<rect x="${LX}" y="${ly-1}" width="14" height="8" rx="2" fill="${color}" opacity="0.9"/>`;
+    h += `<text x="${LX+20}" y="${ly+6}" fill="${color}" font-size="11" font-weight="600" font-family="system-ui,sans-serif">${i+1}. ${rider.name}</text>`;
+  });
 
   svg.innerHTML = h;
 }
