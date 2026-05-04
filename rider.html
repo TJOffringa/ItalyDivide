@@ -217,7 +217,7 @@
 
   <div class="slider-block">
     <div class="slider-lbl">
-      Afstand van mijn positie
+      Vooruit zoeken op route
       <strong id="radius-lbl">50 km</strong>
     </div>
     <input type="range" id="radius-sl" min="1" max="200" value="50" step="1"
@@ -226,7 +226,7 @@
 
   <div class="slider-block">
     <div class="slider-lbl">
-      Max. afstand van route
+      Max. afstand van route &amp; terugkijken
       <strong id="maxdist-lbl">2.0 km</strong>
     </div>
     <input type="range" id="maxdist-sl" min="1" max="100" value="20" step="1"
@@ -411,9 +411,12 @@ function renderResults(pts) {
   pts.forEach(p => {
     const m = L.marker([p.lat, p.lon], { icon: mkIcon })
       .addTo(map)
-      .bindPopup(`<b style="color:${DOT_COLOR}">${p.name}</b>${p.address ? '<br><small>' + p.address + '</small>' : ''}<br><small>${p.distFromRider.toFixed(1)} km van jou</small>`);
+      .bindPopup(`<b style="color:${DOT_COLOR}">${p.name}</b>${p.address ? '<br><small>' + p.address + '</small>' : ''}<br><small>${p.kmAhead >= 0 ? '+' + p.kmAhead.toFixed(1) + ' km vooruit op route' : p.kmAhead.toFixed(1) + ' km op route'}</small>`);
     poiMarkers.push(m);
 
+    const kmLabel = p.kmAhead >= 0
+      ? `+${p.kmAhead.toFixed(1)} km`
+      : `${p.kmAhead.toFixed(1)} km`;
     const el = document.createElement('div');
     el.className = 'res-item';
     el.innerHTML = `
@@ -422,7 +425,7 @@ function renderResults(pts) {
         <div class="res-name">${p.name}</div>
         ${p.address ? `<div class="res-addr">${p.address}</div>` : ''}
       </div>
-      <div class="res-dist">${p.distFromRider.toFixed(1)} km</div>`;
+      <div class="res-dist">${kmLabel}</div>`;
     el.addEventListener('click', () => { map.setView([p.lat, p.lon], 14); m.openPopup(); });
     list.appendChild(el);
   });
