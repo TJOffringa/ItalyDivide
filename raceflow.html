@@ -63,9 +63,11 @@ async function load() {
     draw(data);
     document.getElementById('status').textContent =
       `Top ${data.riders.length} rijders · ${new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
-    let s = 60;
+    let s = 900;
     cdTimer = setInterval(() => {
-      document.getElementById('countdown').textContent = `↺ ${--s}s`;
+      --s;
+      const m = Math.floor(s / 60), sec = s % 60;
+      document.getElementById('countdown').textContent = `↺ ${m}:${String(sec).padStart(2,'0')}`;
       if (s <= 0) { clearInterval(cdTimer); load(); }
     }, 1000);
   } catch(e) {
