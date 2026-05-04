@@ -679,7 +679,6 @@ function updateStats() {
   const mv = riders.filter(r => r.motionType === 'MOVING');
   document.getElementById('sv-total').textContent = riders.length;
   document.getElementById('sv-mv').textContent    = mv.length;
-  document.getElementById('sv-st').textContent    = riders.length - mv.length;
 }
 
 // ── Rider list ────────────────────────────────────────────────────────
