@@ -79,7 +79,7 @@ function draw({ riders, totalKm, raceStart }) {
   const allPts = riders.flatMap(r => r.pts);
   if (!allPts.length) { svg.innerHTML = ''; return; }
 
-  // X-axis: hours since race start
+  // X-axis: hours since official race start (incl. untracked period before tracking began)
   const maxHrs = Math.ceil((now - raceStart) / 3600000) + 1;
   const kmTop  = Math.ceil((totalKm || Math.max(...allPts.map(p => p[1]))) / 200) * 200;
 
