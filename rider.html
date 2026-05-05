@@ -243,9 +243,9 @@ const DOT_COLOR = '#f59e0b';
 
 // ── Map ────────────────────────────────────────────────────────────────
 const map = L.map('map', { zoomControl: true }).setView([43.5, 12.5], 7);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap © CartoDB',
-  subdomains: 'abcd', maxZoom: 19
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
 }).addTo(map);
 
 fetch(`${API_BASE}/api/route`)
