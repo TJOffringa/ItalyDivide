@@ -62,7 +62,7 @@
     }
     #sidebar.collapsed { width: 0; border-right: none; }
     @media (max-width: 640px) {
-      #sidebar { position: absolute; top: 48px; left: 0; bottom: 0; z-index: 500; width: 80vw; max-width: 300px; }
+      #sidebar { position: absolute; top: 48px; left: 0; bottom: 0; z-index: 500; width: 50vw; max-width: 260px; }
       #sidebar.collapsed { width: 0; }
     }
 
@@ -127,6 +127,18 @@
       background: rgba(10,15,30,.8); border: 1px solid var(--border);
       border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
       pointer-events: none;
+    }
+
+    /* ── Rider name labels ── */
+    .rider-label {
+      background: none !important; border: none !important; box-shadow: none !important;
+      padding: 0 !important;
+    }
+    .rider-label::before { display: none !important; }
+    .rl-inner {
+      font-size: 10px; font-weight: 600; color: #fff;
+      text-shadow: 0 0 3px #000, 0 0 3px #000;
+      white-space: nowrap; pointer-events: none;
     }
 
     /* ── Popups ── */
@@ -204,6 +216,7 @@ function initMap() {
     attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
   }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+  map.on('zoomend', updateLabelVisibility);
   document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
   setTimeout(() => map.invalidateSize(), 250);
 }
@@ -241,26 +254,48 @@ async function loadPositions() {
 }
 
 // ── Markers ────────────────────────────────────────────────────────────
+const LABEL_ZOOM = 11; // show names at this zoom and above
+
 function renderMarkers() {
-  const seen = new Set();
+  const seen    = new Set();
+  const showLbl = map.getZoom() >= LABEL_ZOOM;
+
   for (const rd of riders) {
     seen.add(rd.deviceId);
     const color   = rd.riderColor || '#888';
     const opacity = rd.scratched ? 0.3 : 0.9;
+
     if (markerMap[rd.deviceId]) {
       markerMap[rd.deviceId]
         .setLatLng([rd.latitude, rd.longitude])
         .setStyle({ color, fillColor: color, opacity, fillOpacity: opacity });
     } else {
+      // First name only to keep labels short
+      const firstName = rd.name.split(' ')[0];
       const m = L.circleMarker([rd.latitude, rd.longitude], {
         radius: rd.scratched ? 4 : 6, color, fillColor: color,
         fillOpacity: opacity, opacity, weight: 1.5
       }).addTo(map).bindPopup(() => popupHtml(rd));
+
+      if (!rd.scratched) {
+        m.bindTooltip(`<span class="rl-inner" style="color:${color}">${firstName}</span>`, {
+          permanent: true, direction: 'right', offset: [7, 0],
+          className: 'rider-label', opacity: 1
+        });
+        if (!showLbl) m.getTooltip()?.setOpacity(0);
+      }
       markerMap[rd.deviceId] = m;
     }
   }
   for (const id of Object.keys(markerMap)) {
     if (!seen.has(+id)) { markerMap[id].remove(); delete markerMap[id]; }
+  }
+}
+
+function updateLabelVisibility() {
+  const show = map.getZoom() >= LABEL_ZOOM;
+  for (const m of Object.values(markerMap)) {
+    m.getTooltip()?.setOpacity(show ? 1 : 0);
   }
 }
 
