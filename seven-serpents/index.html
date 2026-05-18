@@ -161,7 +161,7 @@
 const API   = 'https://tracker.klikschaak.nl';
 const RC    = 'ss-qb26';
 const RF    = 'ssqb26_v1_track.geojson';
-const INTERVAL = 60; // seconds
+const INTERVAL = 300; // seconds — FMC GPS trackers update every ~5 minutes
 
 let map, routeLayer;
 let markerMap = {};   // deviceId → L.circleMarker
@@ -301,7 +301,8 @@ function startCountdown() {
   clearInterval(cdTimer);
   cdTimer = setInterval(() => {
     cdSecs--;
-    document.getElementById('refresh-bar').textContent = `↺ ${cdSecs}s`;
+    const m = Math.floor(cdSecs / 60), s = cdSecs % 60;
+    document.getElementById('refresh-bar').textContent = `↺ ${m}:${String(s).padStart(2,'0')}`;
     if (cdSecs <= 0) { clearInterval(cdTimer); loadPositions().then(startCountdown); }
   }, 1000);
 }
