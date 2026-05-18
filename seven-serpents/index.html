@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seven Serpents: Quick Bite! 2026 — Bomba Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --bg:      #0a0f1e;
+      --surface: #111827;
+      --surface2:#1a2235;
+      --border:  #1e2d4a;
+      --text:    #e8eaf0;
+      --muted:   #6b7a99;
+      --red:     #e8194c;
+      --teal:    #00c4d4;
+      --green:   #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+      font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; }
+
+    /* ── Layout ── */
+    #app { display: flex; height: 100dvh; flex-direction: column; }
+
+    /* ── Header ── */
+    #header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; gap: 10px; min-height: 48px;
+    }
+    #hdr-left  { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    #hdr-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    #back { font-size: 11px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+    #back:hover { color: var(--text); }
+    #race-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #live-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0;
+      background: rgba(232,25,76,.15); color: var(--red); border: 1px solid rgba(232,25,76,.3);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+    #status-txt { font-size: 11px; color: var(--muted); }
+    #sidebar-toggle {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+    }
+    #sidebar-toggle:hover { color: var(--text); border-color: var(--muted); }
+
+    /* ── Body ── */
+    #body { display: flex; flex: 1; min-height: 0; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 280px; flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+      transition: width .2s ease;
+    }
+    #sidebar.collapsed { width: 0; border-right: none; }
+    @media (max-width: 640px) {
+      #sidebar { position: absolute; top: 48px; left: 0; bottom: 0; z-index: 500; width: 80vw; max-width: 300px; }
+      #sidebar.collapsed { width: 0; }
+    }
+
+    #sidebar-top {
+      padding: 10px 12px 6px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #stats-row {
+      display: flex; gap: 8px; margin-bottom: 6px;
+    }
+    .stat-pill {
+      font-size: 11px; padding: 2px 8px; border-radius: 12px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .stat-pill.active { color: var(--green); border-color: rgba(74,222,128,.3); }
+    .stat-pill.scratched { color: #f87171; border-color: rgba(248,113,113,.25); }
+
+    #search { width: 100%; padding: 6px 10px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px;
+      margin-top: 4px; }
+    #search:focus { outline: none; border-color: var(--teal); }
+    #search::placeholder { color: var(--muted); }
+
+    #rider-list { flex: 1; overflow-y: auto; }
+    .rider-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 12px; border-bottom: 1px solid rgba(30,45,74,.5);
+      cursor: pointer; transition: background .1s;
+    }
+    .rider-row:hover { background: var(--surface2); }
+    .rider-row.scratched-row { opacity: .45; }
+    .r-rank { font-size: 11px; color: var(--muted); width: 22px; text-align: right; flex-shrink: 0; }
+    .r-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .r-name { flex: 1; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .r-km { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+    .r-scratch { font-size: 10px; color: #f87171; flex-shrink: 0; }
+
+    /* ── Map ── */
+    #map { flex: 1; min-width: 0; }
+    .leaflet-container { background: #0a0f1e; }
+
+    /* ── Countdown ── */
+    #refresh-bar {
+      position: absolute; bottom: 10px; right: 10px; z-index: 800;
+      background: rgba(10,15,30,.8); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
+      pointer-events: none;
+    }
+
+    /* ── Rider popup ── */
+    .leaflet-popup-content-wrapper { background: #111827; border: 1px solid #1e2d4a; border-radius: 8px; color: #e8eaf0; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
+    .leaflet-popup-tip { background: #111827; }
+    .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
+    .pu-name { font-weight: 700; margin-bottom: 4px; }
+    .pu-meta { font-size: 11px; color: #6b7a99; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <div id="hdr-left">
+      <a id="back" href="../bomba/index.html">← Bomba</a>
+      <div id="race-title">Seven Serpents: Quick Bite! 2026</div>
+      <div id="live-badge"><span class="pulse"></span>Live</div>
+    </div>
+    <div id="hdr-right">
+      <span id="status-txt">Laden…</span>
+      <button id="sidebar-toggle" onclick="toggleSidebar()">☰ Klassement</button>
+    </div>
+  </div>
+
+  <div id="body">
+    <div id="sidebar">
+      <div id="sidebar-top">
+        <div id="stats-row">
+          <span class="stat-pill active" id="pill-active">— rijdend</span>
+          <span class="stat-pill scratched" id="pill-scratch">— uitgevallen</span>
+        </div>
+        <input id="search" type="text" placeholder="Zoek rijder…" oninput="filterList()">
+      </div>
+      <div id="rider-list"></div>
+    </div>
+
+    <div id="map" style="position:relative">
+      <div id="refresh-bar">↺ —</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+const API   = 'https://tracker.klikschaak.nl';
+const RC    = 'ss-qb26';
+const RF    = 'ssqb26_v1_track.geojson';
+const INTERVAL = 60; // seconds
+
+let map, routeLayer;
+let markerMap = {};   // deviceId → L.circleMarker
+let riders    = [];
+let sidebarOpen = window.innerWidth > 640;
+let cdSecs = INTERVAL;
+let cdTimer;
+
+// ── Map init ───────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: false })
+    .setView([46.05, 14.50], 7);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // Apply sidebar state
+  document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+  setTimeout(() => map.invalidateSize(), 250);
+}
+
+// ── Route ──────────────────────────────────────────────────────────────
+async function loadRoute() {
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/route?f=${RF}`);
+    const geojson = await r.json();
+    if (routeLayer) routeLayer.remove();
+    routeLayer = L.geoJSON(geojson, {
+      style: { color: '#00c4d4', weight: 2, opacity: .6 },
+      coordsToLatLng: coords => L.latLng(parseFloat(coords[1]), parseFloat(coords[0]))
+    }).addTo(map);
+  } catch(e) { console.warn('Route load failed:', e.message); }
+}
+
+// ── Positions ──────────────────────────────────────────────────────────
+async function loadPositions() {
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/positions`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    riders = await r.json();
+    renderMarkers();
+    renderList();
+    const active   = riders.filter(r => !r.scratched).length;
+    const scratched = riders.length - active;
+    document.getElementById('pill-active').textContent  = `${active} rijdend`;
+    document.getElementById('pill-scratch').textContent = `${scratched} uitgevallen`;
+    document.getElementById('status-txt').textContent   =
+      `${riders.length} deelnemers · ${new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
+  } catch(e) {
+    document.getElementById('status-txt').textContent = 'Fout: ' + e.message;
+  }
+}
+
+// ── Markers ────────────────────────────────────────────────────────────
+function renderMarkers() {
+  const seen = new Set();
+  for (const rd of riders) {
+    seen.add(rd.deviceId);
+    const lat = rd.latitude, lon = rd.longitude;
+    const color = rd.riderColor || '#888';
+    const opacity = rd.scratched ? 0.3 : 0.9;
+
+    if (markerMap[rd.deviceId]) {
+      markerMap[rd.deviceId].setLatLng([lat, lon])
+        .setStyle({ color, fillColor: color, opacity, fillOpacity: opacity });
+    } else {
+      const m = L.circleMarker([lat, lon], {
+        radius: rd.scratched ? 4 : 6,
+        color, fillColor: color, fillOpacity: opacity, opacity,
+        weight: 1.5
+      }).addTo(map);
+      m.bindPopup(() => popupContent(rd));
+      markerMap[rd.deviceId] = m;
+    }
+    // Keep popup content fresh
+    markerMap[rd.deviceId]._riderData = rd;
+  }
+  // Remove markers for riders no longer in feed
+  for (const id of Object.keys(markerMap)) {
+    if (!seen.has(+id)) { markerMap[id].remove(); delete markerMap[id]; }
+  }
+}
+
+function popupContent(rd) {
+  const km = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+  const status = rd.scratched ? '<span style="color:#f87171">Uitgevallen</span>' : '<span style="color:#4ade80">Rijdend</span>';
+  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
+    <div class="pu-meta">
+      #${rd.teamNumber} · ${km} km · ${status}
+    </div>`;
+}
+
+// ── Leaderboard ────────────────────────────────────────────────────────
+let filterText = '';
+
+function filterList() {
+  filterText = document.getElementById('search').value.toLowerCase();
+  renderList();
+}
+
+function renderList() {
+  const sorted = [...riders]
+    .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0));
+
+  const filtered = filterText
+    ? sorted.filter(r => r.name.toLowerCase().includes(filterText))
+    : sorted;
+
+  const el = document.getElementById('rider-list');
+  el.innerHTML = '';
+  let rank = 0;
+  for (const rd of filtered) {
+    if (!rd.scratched) rank++;
+    const km = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+    const row = document.createElement('div');
+    row.className = 'rider-row' + (rd.scratched ? ' scratched-row' : '');
+    row.innerHTML = `
+      <span class="r-rank">${rd.scratched ? '' : rank}</span>
+      <span class="r-dot" style="background:${rd.riderColor || '#888'}"></span>
+      <span class="r-name">${rd.name}</span>
+      ${rd.scratched ? '<span class="r-scratch">DNF</span>' : `<span class="r-km">${km} km</span>`}`;
+    row.addEventListener('click', () => {
+      const m = markerMap[rd.deviceId];
+      if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
+    });
+    el.appendChild(row);
+  }
+}
+
+// ── Countdown ──────────────────────────────────────────────────────────
+function startCountdown() {
+  cdSecs = INTERVAL;
+  clearInterval(cdTimer);
+  cdTimer = setInterval(() => {
+    cdSecs--;
+    document.getElementById('refresh-bar').textContent = `↺ ${cdSecs}s`;
+    if (cdSecs <= 0) { clearInterval(cdTimer); loadPositions().then(startCountdown); }
+  }, 1000);
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+  setTimeout(() => map.invalidateSize(), 220);
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────
+initMap();
+loadRoute();
+loadPositions().then(startCountdown);
+</script>
+</body>
+</html>

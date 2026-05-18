@@ -98,6 +98,7 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
+    @keyframes p { 0%,100%{opacity:1} 50%{opacity:.3} }
     .badge-live     { background: rgba(232,25,76,.15); color: var(--red);   border: 1px solid rgba(232,25,76,.3); }
     .badge-soon     { background: rgba(0,196,212,.12); color: var(--teal);  border: 1px solid rgba(0,196,212,.3); }
     .badge-finished { background: rgba(107,122,153,.1); color: var(--muted); border: 1px solid var(--border); }
@@ -128,6 +129,24 @@
 <div id="main">
   <div id="section-title">Races</div>
   <div id="race-grid">
+
+    <a class="race-card" href="../seven-serpents/index.html">
+      <div class="card-accent"></div>
+      <div class="card-body">
+        <div class="card-top">
+          <div class="card-name">Seven Serpents: Quick Bite! 2026</div>
+          <div class="card-badge badge-live"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:3px;animation:p 1.4s infinite"></span>Live</div>
+        </div>
+        <div class="card-meta">
+          <div>📅 17 mei 2026</div>
+          <div>📍 Slovenië / Kroatië</div>
+          <div>🚴 Ultra bikepacking</div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Bekijk tracker</span><span>→</span>
+      </div>
+    </a>
 
     <a class="race-card" href="../utrecht-ultra/index.html">
       <div class="card-accent"></div>
