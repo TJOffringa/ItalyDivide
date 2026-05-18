@@ -3,1346 +3,170 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Italy Divide — Classic Tracker</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <title>Bomba Tracker</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:       #0c0c0c;
-      --surface:  #141414;
-      --surface2: #1e1e1e;
-      --border:   #242424;
-      --text:     #e8e8e8;
-      --muted:    #5a5a5a;
-      --dim:      #333;
-      --accent:   #f0a500;
-      --green:    #4ade80;
-      --green-d:  #16a34a;
-      --red:      #f87171;
+      --bg:       #0a0f1e;
+      --surface:  #111827;
+      --surface2: #1a2235;
+      --border:   #1e2d4a;
+      --text:     #e8eaf0;
+      --muted:    #6b7a99;
+      --navy:     #1e3a6e;
+      --red:      #e8194c;
+      --teal:     #00c4d4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+      min-height: 100dvh;
     }
 
-    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; }
-
-    /* ── Layout ── */
-    #app { display: flex; height: 100vh; }
-
-    /* ── Sidebar ── */
-    #sidebar {
-      width: 300px;
-      flex-shrink: 0;
-      min-width: 0;
+    #header {
       background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    #header img { height: 38px; }
+    #logo-text {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: .04em;
+      color: var(--red);
+      display: none;
+    }
+    #header-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    #main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+
+    #section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    #race-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .race-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
       display: flex;
       flex-direction: column;
-      border-right: 1px solid var(--border);
-      z-index: 10;
-      position: relative;
-      transition: width .22s ease;
-      overflow: hidden;
+      transition: border-color .15s, transform .15s;
     }
-    #sidebar.collapsed { width: 0 !important; border-right: none; }
+    .race-card:hover { border-color: var(--teal); transform: translateY(-2px); }
+    .race-card.finished { opacity: .6; }
+    .race-card.finished:hover { border-color: var(--muted); transform: none; }
 
-    @media (max-width: 768px) {
-      #sidebar { max-width: 50vw; }
+    .card-accent {
+      height: 5px;
+      background: linear-gradient(90deg, var(--red), var(--teal));
     }
+    .race-card.finished .card-accent { background: var(--border); }
 
-    /* Single toggle tab — always tracks the right edge of the sidebar */
-    #sidebar-toggle {
-      position: fixed;
-      left: 300px;           /* default; JS overrides after layout */
-      top: 50%; transform: translateY(-50%);
-      width: 22px; height: 64px;
-      background: var(--accent);
-      border-radius: 0 10px 10px 0;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      color: #000; font-size: 18px; font-weight: 900;
-      z-index: 1001;         /* above Leaflet controls (z-index 800) */
-      box-shadow: 2px 0 10px rgba(0,0,0,.45);
-      transition: left .22s ease;
-      user-select: none;
-    }
+    .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
 
-    #sidebar-resize {
-      position: absolute;
-      right: 0; top: 0; bottom: 0;
-      width: 5px;
-      cursor: col-resize;
-      z-index: 20;
-    }
-    #sidebar-resize::after {
-      content: '';
-      position: absolute;
-      right: 0; top: 50%; transform: translateY(-50%);
-      width: 3px; height: 40px;
-      border-radius: 2px;
-      background: var(--border);
-      transition: background .15s;
-    }
-    #sidebar-resize:hover::after { background: var(--accent); }
+    .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 
-    /* Header */
-    #hdr { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    #hdr-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-    .race-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
-    .live-pill {
-      display: inline-flex; align-items: center; gap: 5px;
-      background: rgba(240,165,0,.12); color: var(--accent);
-      font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
-      padding: 3px 7px; border-radius: 2px;
-    }
-    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.4s ease-in-out infinite; }
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
-    #hdr h1 { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.3; }
+    .card-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
 
-    #btn-mcd {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 3px 8px 3px 5px;
-      border: 1px solid var(--border); border-radius: 4px;
-      background: transparent; cursor: pointer;
-      font-size: 11px; color: var(--muted);
-      transition: background .12s, color .12s, border-color .12s;
+    .card-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
       white-space: nowrap;
-    }
-    #btn-mcd img { width: 16px; height: 16px; border-radius: 50%; opacity: .5; transition: opacity .12s; }
-    #btn-mcd.on { background: rgba(218,41,28,.12); border-color: #DA291C; color: var(--text); }
-    #btn-mcd.on img { opacity: 1; }
-
-    /* Stats strip */
-    #stats-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .stat { padding: 10px 14px; border-right: 1px solid var(--border); }
-    .stat:last-child { border-right: none; }
-    .stat-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-bottom: 3px; }
-    .stat-val { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .stat-val.green { color: var(--green); }
-    .stat-val.dim   { color: var(--dim); }
-
-    /* Controls */
-    #controls {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    #sort-select {
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--muted); font-size: 11px; padding: 4px 6px;
-      border-radius: 3px; cursor: pointer;
-    }
-    #sort-select option { background: var(--surface2); }
-    .chk-label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; cursor: pointer; }
-    .chk-label input { accent-color: var(--accent); }
-    #btn-refresh {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--muted); font-size: 11px; padding: 4px 9px;
-      border-radius: 3px; cursor: pointer; transition: .12s;
-    }
-    #btn-refresh:hover { border-color: var(--dim); color: var(--text); }
-    #btn-rider-view {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--muted); font-size: 13px; padding: 3px 7px;
-      border-radius: 3px; cursor: pointer; transition: .12s;
-      text-decoration: none; line-height: 1.6; display: inline-flex; align-items: center;
-    }
-    #btn-rider-view:hover { border-color: var(--dim); color: var(--text); }
-    #btn-raceflow {
-      display: flex; align-items: center; width: 100%;
-      padding: 8px 14px; background: none; border: none;
-      border-bottom: 1px solid var(--border);
-      color: var(--muted); font-size: 12px; font-family: inherit;
-      cursor: pointer; text-decoration: none; transition: color .12s;
-    }
-    #btn-raceflow:hover { color: var(--text); }
-
-    /* POI search */
-    #poi-section {
-      border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
-    #poi-toggle {
-      width: 100%; padding: 8px 14px;
-      display: flex; align-items: center; justify-content: space-between;
-      background: none; border: none; cursor: pointer;
-      font-size: 11px; color: var(--muted); font-family: inherit;
-    }
-    #poi-toggle:hover { color: var(--text); }
-    #poi-body { display: none; padding: 8px 14px 10px; }
-    #poi-body.open { display: block; }
-    #poi-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-    #poi-input {
-      flex: 1 1 100%;
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); font-size: 13px; padding: 8px 10px;
-      border-radius: 4px; font-family: inherit;
-    }
-    #poi-input::placeholder { color: var(--muted); }
-    #poi-dist {
-      flex: 1;
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--muted); font-size: 13px; padding: 8px 6px;
-      border-radius: 4px; cursor: pointer;
-    }
-    #poi-btn {
-      flex: 2;
-      background: var(--accent); border: none; color: #000;
-      font-size: 13px; font-weight: 700; padding: 8px 12px;
-      border-radius: 4px; cursor: pointer; white-space: nowrap;
-    }
-    #poi-status { font-size: 10px; color: var(--muted); margin-bottom: 6px; min-height: 14px; }
-    #poi-layers { display: flex; flex-direction: column; gap: 4px; }
-    .poi-layer {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 11px; padding: 4px 6px;
-      background: var(--surface2); border-radius: 3px;
-      border: 1px solid var(--border);
-    }
-    .poi-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .poi-lbl { flex: 1; color: var(--text); }
-    .poi-count { color: var(--muted); font-size: 10px; }
-    .poi-vis  { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 0 2px; }
-    .poi-rm   { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; padding: 0 2px; }
-    .poi-vis:hover, .poi-rm:hover { color: var(--text); }
+    .badge-live     { background: rgba(232,25,76,.15); color: var(--red);   border: 1px solid rgba(232,25,76,.3); }
+    .badge-soon     { background: rgba(0,196,212,.12); color: var(--teal);  border: 1px solid rgba(0,196,212,.3); }
+    .badge-finished { background: rgba(107,122,153,.1); color: var(--muted); border: 1px solid var(--border); }
 
-    /* Rider list */
-    #rider-list { flex: 1; overflow-y: auto; }
-    #rider-list::-webkit-scrollbar { width: 3px; }
-    #rider-list::-webkit-scrollbar-thumb { background: var(--border); }
+    .card-meta { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
 
-    .rider {
-      display: flex; align-items: flex-start; gap: 8px;
-      padding: 9px 14px; border-bottom: 1px solid var(--border);
-      cursor: pointer; transition: background .1s;
+    .card-footer {
+      border-top: 1px solid var(--border);
+      padding: 10px 16px;
+      font-size: 12px;
+      color: var(--teal);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
-    .rider:hover { background: var(--surface2); }
-    .rider.sel { background: rgba(240,165,0,.07); border-left: 2px solid var(--accent); padding-left: 12px; }
-
-    .rpos { font-size: 10px; font-weight: 700; color: var(--muted); min-width: 22px; font-variant-numeric: tabular-nums; flex-shrink: 0; padding-top: 2px; }
-    .rpos.top { color: var(--accent); }
-
-    .rdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
-    .rdot.mv { background: var(--green); box-shadow: 0 0 5px var(--green); }
-    .rdot.st { background: var(--dim); }
-
-    .rinfo { flex: 1; min-width: 0; }
-    .rname { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rmeta { font-size: 10px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
-    .rspd.mv { color: var(--green); }
-    .bat-lo { color: var(--red); }
-    .bat-md { color: var(--accent); }
-    .bat-ok { color: var(--dim); }
-
-    /* Footer */
-    #footer {
-      padding: 7px 14px; border-top: 1px solid var(--border);
-      font-size: 10px; color: var(--muted); flex-shrink: 0;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-
-    /* Map */
-    #map-wrap { flex: 1; position: relative; min-width: 0; }
-    #map { width: 100%; height: 100%; }
-
-    /* Error toast */
-    #toast {
-      display: none; position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(248,113,113,.15); border: 1px solid var(--red);
-      color: var(--red); font-size: 12px; padding: 8px 16px;
-      border-radius: 4px; z-index: 1000; white-space: nowrap;
-    }
-
-    /* Map countdown badge (mobile only) */
-    #map-countdown {
-      display: none;
-      position: fixed;
-      bottom: 20px; right: 16px;
-      z-index: 15;
-      background: rgba(14,14,14,.88);
-      color: var(--muted);
-      font-size: 12px; font-variant-numeric: tabular-nums;
-      padding: 6px 11px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      pointer-events: none;
-    }
-
-    /* Leaflet overrides */
-    .leaflet-popup-content-wrapper {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 6px; color: var(--text);
-      font-family: inherit; box-shadow: 0 4px 24px rgba(0,0,0,.6);
-    }
-    .leaflet-popup-tip { background: var(--surface); }
-    .leaflet-popup-content { font-size: 12px; line-height: 1.7; margin: 12px 16px; }
-    .leaflet-popup-close-button { color: var(--muted) !important; }
-
-    .pu-name { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
-    .pu-status { font-size: 12px; margin-bottom: 10px; }
-    .pu-status.mv { color: var(--green); }
-    .pu-status.st { color: var(--muted); }
-    .pu-grid {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 8px; margin-bottom: 4px;
-    }
-    .pu-cell { background: var(--surface2); border-radius: 4px; padding: 7px 10px; }
-    .pu-cell-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 3px; }
-    .pu-cell-val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .pu-cell-val.accent { color: var(--accent); }
-    .pu-cell-val.green  { color: var(--green); }
-    .pu-cell-val.muted  { color: var(--muted); }
-    .pu-note { font-size: 9px; color: var(--dim); margin-top: 6px; }
-    .pu-track-btn {
-      margin-top: 8px; width: 100%; padding: 6px;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 4px; color: var(--muted); font-size: 11px;
-      cursor: pointer; transition: background .12s, color .12s, border-color .12s;
-      font-family: inherit;
-    }
-    .pu-track-btn:hover { border-color: var(--dim); color: var(--text); }
-    .pu-track-btn.active { background: rgba(74,222,128,.1); border-color: var(--green); color: var(--green); }
-
-    /* Kaartopties */
-    #map-opts-section { border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    #map-opts-toggle {
-      width: 100%; padding: 8px 14px;
-      display: flex; align-items: center; justify-content: space-between;
-      background: none; border: none; cursor: pointer;
-      font-size: 11px; color: var(--muted); font-family: inherit;
-    }
-    #map-opts-toggle:hover { color: var(--text); }
-    #map-opts-body { display: none; padding: 6px 14px 10px; }
-    #map-opts-body.open { display: block; }
-    .map-opt-row {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 11px; color: var(--muted); cursor: pointer; padding: 3px 0;
-      user-select: none;
-    }
-    .map-opt-row input { accent-color: var(--accent); cursor: pointer; }
-    .map-opt-row:hover { color: var(--text); }
-    #gradient-msg { font-size: 10px; color: var(--muted); margin-top: 3px; min-height: 14px; }
-    #gradient-legend { margin-top: 8px; }
-    .grad-title { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 5px; }
-    .grad-bar { display: flex; gap: 2px; }
-    .grad-chip {
-      flex: 1; height: 20px; border-radius: 2px;
-      font-size: 8px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-      font-variant-numeric: tabular-nums; color: #fff;
-    }
-    .grad-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); margin-top: 3px; }
-    #surface-msg { font-size: 10px; color: var(--muted); margin-top: 3px; min-height: 14px; }
-    #surface-legend { margin-top: 8px; }
-
-    /* POI marker icon wrapper */
-    .poi-icon { background: transparent !important; border: none !important; box-shadow: none !important; }
-
-    /* Rider name labels on map */
-    .lbl { background: transparent; border: none; box-shadow: none; }
-    .lbl span {
-      font-size: 10px; color: #ddd;
-      background: rgba(0,0,0,.55); padding: 1px 5px;
-      border-radius: 2px; white-space: nowrap; pointer-events: none;
-    }
-
-    /* Map countdown badge */
-    #map-countdown { display: none; }
+    .race-card.finished .card-footer { color: var(--muted); }
   </style>
 </head>
 <body>
-<div id="app">
 
-  <!-- Sidebar -->
-  <div id="sidebar">
-    <div id="sidebar-resize"></div>
-    <div id="hdr">
-      <div id="hdr-top">
-        <span class="race-label">Italy Divide 2026</span>
-        <span class="live-pill"><span class="pulse"></span>Live</span>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-        <h1>Classic Route</h1>
-        <button id="btn-mcd" title="McDonald's tonen/verbergen">
-          <img src="mcdonalds-logo.png"><span id="btn-mcd-lbl">McD</span>
-        </button>
-      </div>
-    </div>
-
-    <div id="stats-strip">
-      <div class="stat">
-        <div class="stat-lbl">Rijders</div>
-        <div class="stat-val" id="sv-total">—</div>
-      </div>
-      <div class="stat">
-        <div class="stat-lbl">Rijdend</div>
-        <div class="stat-val green" id="sv-mv">—</div>
-      </div>
-    </div>
-
-    <div id="controls">
-      <select id="sort-select">
-        <option value="pos">↓ Positie</option>
-        <option value="speed">↓ Snelheid</option>
-        <option value="name">A–Z Naam</option>
-        <option value="stop">↓ Stop</option>
-        <option value="battery">↓ Batterij</option>
-      </select>
-      <label class="chk-label">
-        <input type="checkbox" id="chk-stopped" checked> Gestopt
-      </label>
-      <button id="btn-refresh">↺</button>
-      <a href="rider.html" id="btn-rider-view" title="Rijder zoeker">🔍</a>
-    </div>
-
-    <a href="raceflow.html" id="btn-raceflow">📊 Race Flow</a>
-
-    <!-- Kaartopties -->
-    <div id="map-opts-section">
-      <button id="map-opts-toggle" onclick="toggleMapOpts()">
-        <span>🗺 Kaartopties</span><span id="map-opts-arrow">▸</span>
-      </button>
-      <div id="map-opts-body">
-        <label class="map-opt-row">
-          <input type="checkbox" id="chk-gradient" onchange="onGradientToggle()">
-          <span>Hellingshoek tonen</span>
-        </label>
-        <div id="gradient-msg"></div>
-        <div id="gradient-legend" style="display:none">
-          <div class="grad-title">Helling (%)</div>
-          <div class="grad-bar">
-            <div class="grad-chip" style="background:#1e3a8a" title="steile afdaling (≤ -8%)">≤-8</div>
-            <div class="grad-chip" style="background:#2563eb" title="afdaling (-8 tot -4%)">-5</div>
-            <div class="grad-chip" style="background:#93c5fd;color:#111" title="lichte afdaling (-4 tot -1.5%)">-2</div>
-            <div class="grad-chip" style="background:#4ade80;color:#111" title="vlak (-1.5 tot +1.5%)">0</div>
-            <div class="grad-chip" style="background:#fde047;color:#111" title="lichte stijging (1.5 tot 4%)">+2</div>
-            <div class="grad-chip" style="background:#f97316" title="matige stijging (4 tot 8%)">+5</div>
-            <div class="grad-chip" style="background:#ef4444" title="steile stijging (8 tot 12%)">+9</div>
-            <div class="grad-chip" style="background:#111827;border:1px solid #555" title="zeer steil (> 12%)">+12</div>
-          </div>
-          <div class="grad-labels">
-            <span>⬇ Afdaling</span><span>Vlak</span><span>Stijging ⬆</span>
-          </div>
-        </div>
-        <label class="map-opt-row" style="margin-top:8px">
-          <input type="checkbox" id="chk-surface" onchange="onSurfaceToggle()">
-          <span>Verharding tonen</span>
-        </label>
-        <div id="surface-msg"></div>
-        <div id="surface-legend" style="display:none">
-          <div class="grad-title">Wegdek</div>
-          <div style="display:flex;gap:14px;margin-top:4px">
-            <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
-              <svg width="28" height="6"><line x1="0" y1="3" x2="28" y2="3" stroke="#e07800" stroke-width="4" stroke-linecap="round"/></svg>
-              <span>Verhard</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
-              <svg width="28" height="6"><line x1="0" y1="3" x2="28" y2="3" stroke="#b45309" stroke-width="4" stroke-dasharray="7 5" stroke-linecap="round"/></svg>
-              <span>Onverhard</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- POI zoeker -->
-    <div id="poi-section">
-      <button id="poi-toggle" onclick="togglePoiPanel()">
-        <span>📍 Zoek langs route</span><span id="poi-arrow">▸</span>
-      </button>
-      <div id="poi-body">
-        <div id="poi-row">
-          <input id="poi-input" placeholder="hotel, restaurant, apotheek…" type="text">
-          <select id="poi-dist">
-            <option value="1">1 km</option>
-            <option value="2" selected>2 km</option>
-            <option value="5">5 km</option>
-            <option value="10">10 km</option>
-          </select>
-          <button id="poi-btn" onclick="searchPoi()">Zoek</button>
-        </div>
-        <div id="poi-status"></div>
-        <div id="poi-layers"></div>
-      </div>
-    </div>
-
-    <div id="rider-list"></div>
-
-    <div id="footer">
-      <span id="update-time">—</span>
-      <span id="next-refresh"></span>
-    </div>
-  </div>
-
-  <!-- Map -->
-  <div id="map-wrap">
-    <div id="map"></div>
-    <div id="toast"></div>
-  </div>
-
+<div id="header">
+  <img id="logo-img" src="bomba-tracker-logo.png" alt="Bomba Tracker"
+       onerror="this.style.display='none';document.getElementById('logo-text').style.display='block'">
+  <div id="logo-text">BOMBA TRACKER</div>
+  <div id="header-sub">Race tracking platform</div>
 </div>
 
-<div id="map-countdown">↺ —</div>
-<div id="sidebar-toggle">‹</div>
+<div id="main">
+  <div id="section-title">Races</div>
+  <div id="race-grid">
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script>
-'use strict';
-
-const BASE = '';
-const API_BASE = 'https://tracker.klikschaak.nl';
-
-// ── State ─────────────────────────────────────────────────────────────
-const STARTED_AT = new Date();
-const ACC  = {};
-let riders = [];
-let selId  = null;
-let timer, countdown, cdVal = 60;
-let routePts = [];
-let routeCum = [];
-
-// ── Map ───────────────────────────────────────────────────────────────
-const map = L.map('map', { zoomControl: false, attributionControl: false })
-  .setView([43.5, 12.0], 7);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19, subdomains: 'abc'
-}).addTo(map);
-
-L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-function labelSize(zoom) {
-  // 10px at zoom 7, scales up with each zoom level
-  return Math.max(10, Math.round(10 * Math.pow(1.25, zoom - 7)));
-}
-function updateLabels() {
-  const px = labelSize(map.getZoom()) + 'px';
-  Object.values(lbls).forEach(m => {
-    const el = m.getElement();
-    if (el) el.querySelector('span').style.fontSize = px;
-  });
-}
-map.on('zoomend', updateLabels);
-
-L.control.attribution({ position: 'bottomleft',
-  prefix: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
-
-const mkrs = {};
-const lbls = {};
-
-function circleOpts(mv) {
-  return { radius: mv ? 7 : 5, fillColor: mv ? '#4ade80' : '#374151',
-           color: mv ? '#16a34a' : '#1f2937', weight: 1.5, fillOpacity: mv ? .88 : .65 };
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────
-function hav(a, b, c, d) {
-  const R = 6371, r = Math.PI / 180;
-  const x = Math.sin((c-a)*r/2)**2 + Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
-}
-
-function durStr(ms) {
-  if (!ms || ms < 60000) return '—';
-  const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
-  return h > 0 ? `${h}u ${String(m % 60).padStart(2,'0')}m` : `${m}m`;
-}
-
-function batCls(pct) { return pct < 30 ? 'bat-lo' : pct < 50 ? 'bat-md' : 'bat-ok'; }
-
-// ── Route / Race position ─────────────────────────────────────────────
-async function loadRoute() {
-  try {
-    const res = await fetch('route.json');
-    if (!res.ok) return;
-    routePts = await res.json();
-    routeCum = [0];
-    for (let i = 1; i < routePts.length; i++) {
-      routeCum.push(routeCum[i-1] + hav(routePts[i-1][0], routePts[i-1][1], routePts[i][0], routePts[i][1]));
-    }
-    L.polyline(routePts, { color: '#e07800', weight: 3, opacity: 0.75, lineJoin: 'round' }).addTo(map);
-  } catch(e) {
-    console.error('Route load error:', e);
-  }
-}
-
-function getRaceKm(lat, lon) {
-  if (!routePts.length) return 0;
-  let best = Infinity, idx = 0;
-  for (let i = 0; i < routePts.length; i++) {
-    const dlat = lat - routePts[i][0], dlon = lon - routePts[i][1];
-    const dsq = dlat*dlat + dlon*dlon;
-    if (dsq < best) { best = dsq; idx = i; }
-  }
-  return routeCum[idx];
-}
-
-// ── Popup ─────────────────────────────────────────────────────────────
-function popupHtml(r) {
-  const now = Date.now();
-  const mv  = r.motionType === 'MOVING';
-  const spd = r.speed > 0 ? (r.speed * 3.6).toFixed(1) : null;
-  const acc = ACC[r.id] || {};
-
-  const raceKm   = acc.raceKm || 0;
-  const totalKm  = routeCum.length ? routeCum[routeCum.length - 1] : 0;
-  const remainKm = totalKm > 0 ? Math.max(0, totalKm - raceKm) : 0;
-  const pct      = totalKm > 0 ? Math.round(raceKm / totalKm * 100) : 0;
-
-  const stopMs   = (acc.stopMs || 0) + (acc.stopSince   ? now - acc.stopSince   : 0);
-  const ridingMs = (acc.ridingMs || 0) + (acc.ridingSince ? now - acc.ridingSince : 0);
-  const dist     = acc.dist || 0;
-
-  return `
-    <div class="pu-name">${r.name}</div>
-    <div class="pu-status ${mv ? 'mv' : 'st'}">${mv && spd ? '▶ ' + spd + ' km/h' : '◼ Gestopt'}</div>
-    <div class="pu-grid">
-      <div class="pu-cell">
-        <div class="pu-cell-lbl">Afstand afgelegd</div>
-        <div class="pu-cell-val accent">${raceKm > 0 ? raceKm.toFixed(0) + ' km' : '—'}${pct > 0 ? '<br><span style="font-size:11px;font-weight:400;color:var(--muted)">'+pct+'% gereden</span>' : ''}</div>
-      </div>
-      <div class="pu-cell">
-        <div class="pu-cell-lbl">Nog te gaan</div>
-        <div class="pu-cell-val">${remainKm > 0 ? remainKm.toFixed(0) + ' km' : '—'}</div>
-      </div>
-      <div class="pu-cell">
-        <div class="pu-cell-lbl">Afstand*</div>
-        <div class="pu-cell-val ${dist > 0.1 ? 'green' : 'muted'}">${dist > 0.1 ? dist.toFixed(1) + ' km' : '—'}</div>
-      </div>
-      <div class="pu-cell">
-        <div class="pu-cell-lbl">Hoogte</div>
-        <div class="pu-cell-val">${(r.altitude||0).toFixed(0)} m</div>
-      </div>
-    </div>
-    <div class="pu-cell" style="margin-top:0">
-      <div class="pu-cell-lbl">Batterij</div>
-      <div class="pu-cell-val">${Math.round((r['battery.level']||0)*100)}%</div>
-    </div>
-    <div class="pu-note">* Gevolgd sinds ${new Date(acc.firstSeen || STARTED_AT).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}${pct > 0 ? ' · ' + pct + '% gereden' : ''}</div>
-    <button class="pu-track-btn${riderTracks[r.id] ? ' active' : ''}" onclick="toggleTrack('${r.id}')">
-      ${riderTracks[r.id] ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
-    </button>
-    <a class="pu-track-btn" href="rider.html?id=${encodeURIComponent(r.id)}" style="display:block;text-align:center;text-decoration:none;margin-top:4px">
-      🔍 Zoek in de buurt van deze rijder
-    </a>`;
-}
-
-// ── Data processing ───────────────────────────────────────────────────
-function processRiders(data) {
-  const now = Date.now();
-  riders = data;
-
-  data.forEach(r => {
-    const id = r.id;
-    const [lat, lon] = r.latest_gps_point;
-    const mv     = r.motionType === 'MOVING';
-    const raceKm = r._stats?.raceKm || getRaceKm(lat, lon);
-    const srv    = r._stats;
-
-    if (!ACC[id]) {
-      // Seed from server-accumulated stats so every visitor sees full history
-      ACC[id] = {
-        dist:       srv?.dist     || 0,
-        ridingMs:   srv?.ridingMs || 0,
-        stopMs:     srv?.stopMs   || 0,
-        stopSince:   mv ? null : now,
-        ridingSince: mv ? now  : null,
-        prevLat: lat, prevLon: lon,
-        raceKm,
-        firstSeen: srv?.firstSeen || now,
-      };
-    } else {
-      const s = ACC[id];
-      // Sync upward from server (server is authoritative for totals)
-      if (srv) {
-        s.dist     = Math.max(s.dist     || 0, srv.dist     || 0);
-        s.ridingMs = Math.max(s.ridingMs || 0, srv.ridingMs || 0);
-        s.stopMs   = Math.max(s.stopMs   || 0, srv.stopMs   || 0);
-        if (srv.firstSeen && (!s.firstSeen || srv.firstSeen < s.firstSeen))
-          s.firstSeen = srv.firstSeen;
-        // Sync stopSince from server so we know the real start of the current stop
-        if (srv.stopSince && (!s.stopSince || srv.stopSince < s.stopSince))
-          s.stopSince = srv.stopSince;
-      }
-      s.prevLat = lat; s.prevLon = lon;
-      s.raceKm  = raceKm;
-
-      if (!mv && !s.stopSince)   { s.stopSince   = now; }
-      if ( mv &&  s.stopSince)   { s.stopMs   += now - s.stopSince;   s.stopSince   = null; }
-      if ( mv && !s.ridingSince) { s.ridingSince  = now; }
-      if (!mv &&  s.ridingSince) { s.ridingMs += now - s.ridingSince; s.ridingSince = null; }
-    }
-
-    if (!mkrs[id]) {
-      mkrs[id] = L.circleMarker([lat, lon], circleOpts(mv)).addTo(map);
-      mkrs[id].bindPopup('', { maxWidth: 260 });
-      mkrs[id].on('click', () => selectRider(id));
-      const firstName = r.first || r.name.split(' ')[0];
-      const sz = labelSize(map.getZoom());
-      lbls[id] = L.marker([lat, lon], {
-        icon: L.divIcon({ className: 'lbl', html: `<span style="font-size:${sz}px">${firstName}</span>`, iconSize: [0, 0], iconAnchor: [-6, 4] }),
-        interactive: false
-      }).addTo(map);
-    } else {
-      mkrs[id].setLatLng([lat, lon]).setStyle(circleOpts(mv));
-      lbls[id].setLatLng([lat, lon]);
-    }
-    mkrs[id].setPopupContent(popupHtml(r));
-  });
-
-  updateStats();
-  renderList();
-  document.getElementById('update-time').textContent =
-    'Bijgewerkt ' + new Date().toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-  startCountdown();
-}
-
-// ── Stats strip ───────────────────────────────────────────────────────
-function updateStats() {
-  const mv = riders.filter(r => r.motionType === 'MOVING');
-  document.getElementById('sv-total').textContent = riders.length;
-  document.getElementById('sv-mv').textContent    = mv.length;
-}
-
-// ── Rider list ────────────────────────────────────────────────────────
-function renderList() {
-  const now         = Date.now();
-  const showStopped = document.getElementById('chk-stopped').checked;
-  const sortBy      = document.getElementById('sort-select').value;
-  const totalKm     = routeCum.length ? routeCum[routeCum.length - 1] : 0;
-
-  let rows = showStopped ? riders : riders.filter(r => r.motionType === 'MOVING');
-
-  rows = [...rows].sort((a, b) => {
-    const sa = ACC[a.id] || {}, sb = ACC[b.id] || {};
-    if (sortBy === 'pos')     return (sb.raceKm||0) - (sa.raceKm||0);
-    if (sortBy === 'name')    return a.name.localeCompare(b.name, 'nl');
-    if (sortBy === 'battery') return (b['battery.level']||0) - (a['battery.level']||0);
-    if (sortBy === 'stop') {
-      const at = (sa.stopMs||0) + (sa.stopSince ? now-sa.stopSince : 0);
-      const bt = (sb.stopMs||0) + (sb.stopSince ? now-sb.stopSince : 0);
-      return bt - at;
-    }
-    return (b.speed||0) - (a.speed||0);
-  });
-
-  const showPos = sortBy === 'pos' && routePts.length > 0;
-
-  document.getElementById('rider-list').innerHTML = rows.map((r, i) => {
-    const mv     = r.motionType === 'MOVING';
-    const spd    = r.speed > 0 ? (r.speed * 3.6).toFixed(1) : null;
-    const acc    = ACC[r.id] || {};
-    const stopMs = (acc.stopMs||0) + (acc.stopSince ? now - acc.stopSince : 0);
-    const bat    = Math.round((r['battery.level']||0) * 100);
-    const sel    = r.id === selId;
-    const rank   = i + 1;
-    const raceKm   = acc.raceKm || 0;
-    const remainKm = totalKm > 0 ? Math.max(0, totalKm - raceKm) : 0;
-
-    const posHtml = showPos
-      ? `<div class="rpos ${rank <= 3 ? 'top' : ''}">#${rank}</div>`
-      : '';
-
-    const distRow = showPos && raceKm > 0
-      ? `<div class="rmeta">
-           <span>${raceKm.toFixed(0)} km gereden</span>
-           ${remainKm > 0 ? `<span style="color:var(--accent)">${remainKm.toFixed(0)} te gaan</span>` : ''}
-         </div>`
-      : '';
-
-    return `<div class="rider${sel ? ' sel' : ''}" onclick="selectRider('${r.id}')">
-      ${posHtml}
-      <div class="rdot ${mv ? 'mv' : 'st'}"></div>
-      <div class="rinfo">
-        <div class="rname">${r.name}</div>
-        <div class="rmeta">
-          <span class="rspd ${mv ? 'mv' : ''}">${spd ? spd + ' km/h' : '—'}</span>
-          ${(r.altitude||0) > 0 ? `<span>${Math.round(r.altitude)} m</span>` : ''}
-          <span class="${batCls(bat)}">${bat}%</span>
+    <a class="race-card" href="utrecht-ultra/index.html">
+      <div class="card-accent"></div>
+      <div class="card-body">
+        <div class="card-top">
+          <div class="card-name">Utrecht Ultra 2026</div>
+          <div class="card-badge badge-soon">Binnenkort</div>
         </div>
-        ${distRow}
+        <div class="card-meta">
+          <div>📅 23 mei 2026</div>
+          <div>📍 Utrecht, Nederland</div>
+          <div>🚴 Ultra cycling</div>
+        </div>
       </div>
-    </div>`;
-  }).join('');
-}
+      <div class="card-footer">
+        <span>Bekijk tracker</span><span>→</span>
+      </div>
+    </a>
+
+    <a class="race-card finished" href="itdvd26/index.html">
+      <div class="card-accent"></div>
+      <div class="card-body">
+        <div class="card-top">
+          <div class="card-name">Italy Divide 2026</div>
+          <div class="card-badge badge-finished">Afgelopen</div>
+        </div>
+        <div class="card-meta">
+          <div>📅 1 mei 2026</div>
+          <div>📍 Italië</div>
+          <div>🚴 Ultra gravel</div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <span>Bekijk archief</span><span>→</span>
+      </div>
+    </a>
+
+  </div>
+</div>
 
-// ── Select rider ──────────────────────────────────────────────────────
-window.selectRider = function(id) {
-  selId = id;
-  const r = riders.find(x => x.id === id);
-  if (r) mkrs[id] && mkrs[id].openPopup();
-  renderList();
-  if (window.innerWidth <= 700) closeSidebar();
-};
-
-
-// ── Fetch ─────────────────────────────────────────────────────────────
-async function load() {
-  try {
-    const res = await fetch(`${API_BASE}/api/riders?_=` + Date.now());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { riders: data } = await res.json();
-    processRiders(data);
-    showToast(null);
-  } catch(e) {
-    showToast('Verbindingsfout: ' + e.message);
-    startCountdown();
-  }
-}
-
-function showToast(msg) {
-  const el = document.getElementById('toast');
-  el.style.display = msg ? 'block' : 'none';
-  if (msg) el.textContent = msg;
-}
-
-// ── Countdown ─────────────────────────────────────────────────────────
-function startCountdown() {
-  clearTimeout(timer); clearInterval(countdown);
-  cdVal = 60;
-  const elFtr = document.getElementById('next-refresh');
-  const elMap = document.getElementById('map-countdown');
-  countdown = setInterval(() => {
-    cdVal--;
-    const txt = `↺ ${cdVal}s`;
-    elFtr.textContent = txt;
-    elMap.textContent = txt;
-    if (cdVal <= 0) { clearInterval(countdown); load(); }
-  }, 1000);
-  timer = setTimeout(load, 60000);
-}
-
-// ── Controls ──────────────────────────────────────────────────────────
-document.getElementById('chk-stopped').addEventListener('change', renderList);
-document.getElementById('sort-select').addEventListener('change', renderList);
-document.getElementById('btn-refresh').addEventListener('click', () => {
-  clearTimeout(timer); clearInterval(countdown);
-  load();
-});
-
-// ── Sidebar collapse / expand ─────────────────────────────────────────
-const _sidebar = document.getElementById('sidebar');
-const _toggle  = document.getElementById('sidebar-toggle');
-
-function updateToggle() {
-  const collapsed = _sidebar.classList.contains('collapsed');
-  const w = collapsed ? 0 : _sidebar.offsetWidth;
-  _toggle.style.left = w + 'px';
-  _toggle.textContent = collapsed ? '›' : '‹';
-}
-
-_toggle.addEventListener('click', () => {
-  const collapsed = _sidebar.classList.contains('collapsed');
-  if (collapsed) {
-    _sidebar.classList.remove('collapsed');
-    localStorage.setItem('sidebarCollapsed', '0');
-  } else {
-    _sidebar.classList.add('collapsed');
-    localStorage.setItem('sidebarCollapsed', '1');
-  }
-  // Wait for CSS transition to finish before updating position
-  setTimeout(() => { updateToggle(); map.invalidateSize(); }, 230);
-  updateToggle(); // immediate icon update
-});
-
-// Restore collapse state
-if (localStorage.getItem('sidebarCollapsed') === '1') {
-  _sidebar.classList.add('collapsed');
-}
-// Set initial position after layout (multiple attempts to be safe)
-requestAnimationFrame(updateToggle);
-setTimeout(updateToggle, 100);
-setTimeout(updateToggle, 500);
-window.addEventListener('resize', updateToggle);
-
-// ── Sidebar resize ────────────────────────────────────────────────────
-(function() {
-  const sidebar  = document.getElementById('sidebar');
-  const resizer  = document.getElementById('sidebar-resize');
-  const MIN_W    = 200;
-
-  function maxW() {
-    return window.innerWidth <= 768
-      ? Math.floor(window.innerWidth * 0.5)
-      : Math.floor(window.innerWidth * 0.7);
-  }
-
-  // Restore saved width, capped at mobile max
-  const saved = localStorage.getItem('sidebarW');
-  if (saved) {
-    sidebar.style.width = Math.min(parseInt(saved), maxW()) + 'px';
-    requestAnimationFrame(updateToggle);
-  }
-
-  let startX, startW;
-
-  function onMove(e) {
-    const x = e.touches ? e.touches[0].clientX : e.clientX;
-    const w = Math.min(maxW(), Math.max(MIN_W, startW + (x - startX)));
-    sidebar.style.width = w + 'px';
-    localStorage.setItem('sidebarW', w);
-    updateToggle();
-    map.invalidateSize();
-  }
-
-  function onUp() {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('touchmove', onMove);
-    document.removeEventListener('mouseup',   onUp);
-    document.removeEventListener('touchend',  onUp);
-    document.body.style.cursor    = '';
-    document.body.style.userSelect = '';
-  }
-
-  resizer.addEventListener('mousedown', e => {
-    startX = e.clientX;
-    startW = sidebar.offsetWidth;
-    document.body.style.cursor    = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup',   onUp);
-  });
-
-  resizer.addEventListener('touchstart', e => {
-    startX = e.touches[0].clientX;
-    startW = sidebar.offsetWidth;
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend',  onUp);
-  }, { passive: true });
-})();
-
-// ── McDonald's markers ───────────────────────────────────────────────
-const mcdMarkers = [];
-let mcdVisible = localStorage.getItem('mcdOn') !== '0';
-
-async function loadMcDonalds() {
-  try {
-    const res = await fetch('mcdonalds.json');
-    if (!res.ok) return;
-    const locations = await res.json();
-    const icon = L.divIcon({
-      className: 'poi-icon',
-      html: `<img src="mcdonalds-logo.png" style="
-        width:32px;height:32px;border-radius:50%;
-        border:2px solid #fff;
-        box-shadow:0 2px 6px rgba(0,0,0,.5);
-        object-fit:cover;display:block">`,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -18]
-    });
-    locations.forEach(loc => {
-      const m = L.marker([loc.lat, loc.lon], { icon })
-        .bindPopup(`<b style="color:#DA291C">McDonald's</b>${loc.address ? '<br><small>' + loc.address + '</small>' : ''}`);
-      mcdMarkers.push(m);
-      if (mcdVisible) m.addTo(map);
-    });
-    updateMcdBtn();
-  } catch(e) {
-    console.error('McD load error:', e);
-  }
-}
-
-function updateMcdBtn() {
-  const btn = document.getElementById('btn-mcd');
-  const lbl = document.getElementById('btn-mcd-lbl');
-  if (!btn) return;
-  btn.classList.toggle('on', mcdVisible);
-  lbl.textContent = mcdVisible ? 'McD aan' : 'McD uit';
-}
-
-document.getElementById('btn-mcd').addEventListener('click', () => {
-  mcdVisible = !mcdVisible;
-  localStorage.setItem('mcdOn', mcdVisible ? '1' : '0');
-  mcdMarkers.forEach(m => mcdVisible ? m.addTo(map) : m.remove());
-  updateMcdBtn();
-});
-
-// ── POI search ───────────────────────────────────────────────────────
-const POI_COLORS = ['#f59e0b','#38bdf8','#a78bfa','#fb7185','#34d399','#f97316','#e879f9','#facc15'];
-const poiLayers  = {};   // key → { markers[], visible, color, label, count }
-let   poiColorIdx = 0;
-
-window.togglePoiPanel = function() {
-  const body  = document.getElementById('poi-body');
-  const arrow = document.getElementById('poi-arrow');
-  const open  = body.classList.toggle('open');
-  arrow.textContent = open ? '▾' : '▸';
-};
-
-window.searchPoi = async function() {
-  const q       = document.getElementById('poi-input').value.trim();
-  const maxdist = document.getElementById('poi-dist').value;
-  const status  = document.getElementById('poi-status');
-  if (!q) return;
-
-  const key = `${q}|${maxdist}km`;
-  if (poiLayers[key]) { status.textContent = 'Al geladen — zie laag hieronder.'; return; }
-
-  status.textContent = '⏳ Zoeken…';
-  document.getElementById('poi-btn').disabled = true;
-
-  try {
-    const res = await fetch(`${API_BASE}/api/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const pts  = data.results ?? data;  // backwards compat
-    const errs = data.errors ?? [];
-
-    if (!pts.length && !errs.length) { status.textContent = `Niets gevonden voor "${q}" binnen ${maxdist} km.`; return; }
-
-    if (pts.length) {
-      const color = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
-      const icon  = L.divIcon({
-        className: 'poi-icon',
-        html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.6)"></div>`,
-        iconSize: [18,18], iconAnchor: [9,9], popupAnchor: [0,-11]
-      });
-      const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
-        .addTo(map)
-        .bindPopup(`<b style="color:${color}">${p.name}</b>${p.address ? '<br><small>'+p.address+'</small>' : ''}`));
-      poiLayers[key] = { markers, visible: true, color, label: q, count: pts.length, maxdist };
-      renderPoiLayers();
-    }
-
-    status.textContent = pts.length
-      ? `✓ ${pts.length} resultaten${errs.length ? ` (⚠ ${errs.length} zone${errs.length>1?'s':''} mislukt — probeer opnieuw)` : ''}`
-      : `⚠ Alle zones zijn mislukt — probeer opnieuw`;
-  } catch(e) {
-    status.textContent = `Fout: ${e.message}`;
-  } finally {
-    document.getElementById('poi-btn').disabled = false;
-  }
-};
-
-function renderPoiLayers() {
-  const el = document.getElementById('poi-layers');
-  el.innerHTML = Object.entries(poiLayers).map(([key, l]) => `
-    <div class="poi-layer">
-      <div class="poi-dot" style="background:${l.color};opacity:${l.visible?1:.35}"></div>
-      <span class="poi-lbl">${l.label}</span>
-      <span class="poi-count">${l.count} · ${l.maxdist}km</span>
-      <button class="poi-vis" title="${l.visible?'Verbergen':'Tonen'}" onclick="togglePoiLayer('${key}')">${l.visible?'👁':'👁'}</button>
-      <button class="poi-rm"  title="Verwijderen" onclick="removePoiLayer('${key}')">✕</button>
-    </div>`).join('');
-}
-
-window.togglePoiLayer = function(key) {
-  const l = poiLayers[key]; if (!l) return;
-  l.visible = !l.visible;
-  l.markers.forEach(m => l.visible ? m.addTo(map) : m.remove());
-  renderPoiLayers();
-};
-
-window.removePoiLayer = function(key) {
-  const l = poiLayers[key]; if (!l) return;
-  l.markers.forEach(m => m.remove());
-  delete poiLayers[key];
-  renderPoiLayers();
-};
-
-// Enter key in POI input triggers search
-document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
-
-// ── Rider tracks ─────────────────────────────────────────────────────
-const riderTracks = {};  // id → { line, hourMarkers[], stopMarkers[] }
-
-function drawHourMarkers(pts) {
-  const markers = [];
-  // Only use points that have a timestamp (3-element arrays)
-  const timed = pts.filter(p => p[2]);
-  if (timed.length < 2) return markers;
-
-  const t0 = timed[0][2];
-  const t1 = timed[timed.length - 1][2];
-
-  // First full hour after start
-  const firstHour = Math.ceil(t0 / 3600000) * 3600000;
-
-  for (let t = firstHour; t <= t1; t += 3600000) {
-    // Find the track point closest in time to this full hour
-    let best = null, bestDiff = Infinity;
-    for (const p of timed) {
-      const diff = Math.abs(p[2] - t);
-      if (diff < bestDiff) { bestDiff = diff; best = p; }
-    }
-    // Only show marker if closest point is within 35 minutes of the hour
-    if (!best || bestDiff > 35 * 60 * 1000) continue;
-
-    const label = new Date(t).toLocaleTimeString('nl-NL', {
-      hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome'
-    });
-
-    const icon = L.divIcon({
-      className: 'poi-icon',
-      html: `<div style="
-        background:rgba(20,20,20,.85);
-        border:1.5px solid #4ade80;
-        border-radius:3px;
-        padding:1px 5px;
-        font-size:10px;
-        font-weight:700;
-        color:#4ade80;
-        white-space:nowrap;
-        line-height:15px;
-        box-shadow:0 1px 4px rgba(0,0,0,.5)
-      ">${label}</div>`,
-      iconAnchor: [0, 8],
-      iconSize: null,
-      popupAnchor: [0, -10]
-    });
-
-    const m = L.marker([best[0], best[1]], { icon, interactive: false }).addTo(map);
-    markers.push(m);
-  }
-  return markers;
-}
-
-// Returns stops derived from time gaps in the track (retroactive)
-function extractStopsFromTrack(pts) {
-  const stops = [];
-  const timed = pts.filter(p => p[2]);
-  for (let i = 0; i < timed.length - 1; i++) {
-    const gap = timed[i + 1][2] - timed[i][2];
-    if (gap > 10 * 60000) {
-      stops.push({ lat: timed[i][0], lon: timed[i][1], startMs: timed[i][2], durationMs: gap, ongoing: false });
-    }
-  }
-  return stops;
-}
-
-function drawStopMarkers(stops) {
-  return stops.map(stop => {
-    const dur   = durStr(stop.durationMs);
-    const time  = new Date(stop.startMs).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Rome' });
-    const color = stop.ongoing ? '#f87171' : '#f0a500';
-    const icon  = L.divIcon({
-      className: 'poi-icon',
-      html: `<div style="background:rgba(20,20,20,.95);border:2px solid ${color};border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;color:${color};white-space:nowrap;line-height:16px;box-shadow:0 2px 6px rgba(0,0,0,.8)">${dur}<br><span style="font-weight:400;font-size:10px;opacity:.9">${time}</span></div>`,
-      iconAnchor: [0, 8], iconSize: null, popupAnchor: [0, -10]
-    });
-    return L.marker([stop.lat, stop.lon], { icon, interactive: false }).addTo(map);
-  });
-}
-
-window.toggleTrack = async function(id) {
-  if (riderTracks[id]) {
-    riderTracks[id].line.remove();
-    riderTracks[id].hourMarkers.forEach(m => m.remove());
-    riderTracks[id].stopMarkers.forEach(m => m.remove());
-    delete riderTracks[id];
-  } else {
-    try {
-      const res = await fetch(`${API_BASE}/api/track/${id}`);
-      const pts = await res.json();
-      if (pts.length > 1) {
-        const line = L.polyline(pts.map(p => [p[0], p[1]]), {
-          color: '#4ade80', weight: 3, opacity: 0.8,
-          lineJoin: 'round', lineCap: 'round'
-        }).addTo(map);
-        const hourMarkers = drawHourMarkers(pts);
-
-        const stops = extractStopsFromTrack(pts);
-        const acc   = ACC[id] || {};
-        const rider = riders.find(x => x.id === id);
-        if (acc.stopSince && rider) {
-          const dur = Date.now() - acc.stopSince;
-          if (dur > 10 * 60000) {
-            const [lat, lon] = rider.latest_gps_point;
-            stops.push({ lat, lon, startMs: acc.stopSince, durationMs: dur, ongoing: true });
-          }
-        }
-        const stopMarkers = drawStopMarkers(stops);
-
-        riderTracks[id] = { line, hourMarkers, stopMarkers };
-        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
-      }
-    } catch(e) {
-      console.error('Track error:', e);
-    }
-  }
-  // Refresh popup content to update button state
-  const r = riders.find(x => x.id === id);
-  if (r && mkrs[id]) mkrs[id].setPopupContent(popupHtml(r));
-};
-
-// ── Hellingshoek (gradient) ───────────────────────────────────────────
-let gradientPts  = null;   // [lat, lon, ele] array, lazy-loaded
-let gradientLines = [];    // active Leaflet polylines
-
-// Stap waarmee route-gradient.json is gegenereerd t.o.v. route.json
-const GRADIENT_STEP = 4;
-
-const GRAD_STOPS = [
-  [-8,        '#1e3a8a'],  // steile afdaling
-  [-4,        '#2563eb'],  // afdaling
-  [-1.5,      '#93c5fd'],  // lichte afdaling
-  [ 1.5,      '#4ade80'],  // vlak
-  [ 4,        '#fde047'],  // lichte stijging
-  [ 8,        '#f97316'],  // matige stijging
-  [12,        '#ef4444'],  // steile stijging
-  [Infinity,  '#111827'],  // zeer steil
-];
-
-function gradColor(pct) {
-  for (const [max, col] of GRAD_STOPS) if (pct < max) return col;
-  return '#111827';
-}
-
-function buildGradientLines(gradPts) {
-  // Rolling elevation smoothing (window ±2)
-  const sm = gradPts.map((p, i) => {
-    const s = Math.max(0, i - 2), e = Math.min(gradPts.length - 1, i + 2);
-    let sum = 0, n = 0;
-    for (let j = s; j <= e; j++) { sum += gradPts[j][2]; n++; }
-    return [p[0], p[1], sum / n];
-  });
-
-  const lines = [];
-  let col = null, seg = [];
-
-  for (let i = 0; i < sm.length - 1; i++) {
-    const distKm = hav(sm[i][0], sm[i][1], sm[i+1][0], sm[i+1][1]);
-    const grad   = distKm > 0.03 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
-    const c      = gradColor(grad);
-
-    // Gebruik tussenliggende routePts voor vloeiende bochten
-    const ri0 = i * GRADIENT_STEP;
-    const ri1 = Math.min((i + 1) * GRADIENT_STEP + 1, routePts.length);
-    const sub  = routePts.length > 0
-      ? routePts.slice(ri0, ri1).map(p => [p[0], p[1]])
-      : [[sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]];
-
-    if (c !== col) {
-      if (seg.length >= 2)
-        lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85,
-          lineJoin: 'round', lineCap: 'butt' }));
-      col = c;
-      seg = sub.slice();
-    } else {
-      // Verleng huidig segment; eerste punt overlapt laatste vorige
-      if (sub.length > 1) seg.push(...sub.slice(1));
-    }
-  }
-  if (seg.length >= 2)
-    lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round' }));
-  return lines;
-}
-
-window.onGradientToggle = async function() {
-  const on  = document.getElementById('chk-gradient').checked;
-  const msg = document.getElementById('gradient-msg');
-  const leg = document.getElementById('gradient-legend');
-  localStorage.setItem('gradientOn', on ? '1' : '0');
-
-  gradientLines.forEach(l => l.remove());
-  gradientLines = [];
-
-  if (!on) { leg.style.display = 'none'; return; }
-
-  if (!gradientPts) {
-    msg.textContent = '⏳ Hoogte-data laden…';
-    try {
-      const res = await fetch('route-gradient.json');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      gradientPts = await res.json();
-      msg.textContent = '';
-    } catch(e) {
-      msg.textContent = `⚠ Laden mislukt: ${e.message}`;
-      document.getElementById('chk-gradient').checked = false;
-      return;
-    }
-  }
-
-  gradientLines = buildGradientLines(gradientPts);
-  gradientLines.forEach(l => l.addTo(map));
-  leg.style.display = 'block';
-};
-
-// ── Verharding (surface) ──────────────────────────────────────────────
-let surfacePts   = null;   // [0|1] per routePt, lazy-loaded
-let surfaceLines = [];     // active Leaflet polylines
-
-window.onSurfaceToggle = async function() {
-  const on  = document.getElementById('chk-surface').checked;
-  const msg = document.getElementById('surface-msg');
-  const leg = document.getElementById('surface-legend');
-  localStorage.setItem('surfaceOn', on ? '1' : '0');
-
-  surfaceLines.forEach(l => l.remove());
-  surfaceLines = [];
-
-  if (!on) { leg.style.display = 'none'; return; }
-
-  if (!surfacePts) {
-    msg.textContent = '⏳ Verharding-data laden…';
-    try {
-      const res = await fetch('route-surface.json');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      surfacePts = await res.json();
-      msg.textContent = '';
-    } catch(e) {
-      msg.textContent = `⚠ Laden mislukt: ${e.message}`;
-      document.getElementById('chk-surface').checked = false;
-      return;
-    }
-  }
-
-  surfaceLines = buildSurfaceLines(surfacePts);
-  surfaceLines.forEach(l => l.addTo(map));
-  leg.style.display = 'block';
-};
-
-function buildSurfaceLines(surf) {
-  if (!routePts.length || !surf.length) return [];
-  const lines = [];
-  let seg = null;
-  const len = Math.min(routePts.length, surf.length);
-
-  for (let i = 0; i <= len; i++) {
-    const unpaved = i < len && surf[i] === 1;
-    if (!unpaved) {
-      if (seg && seg.length >= 2) {
-        lines.push(L.polyline(seg, {
-          color: '#b45309', weight: 5, opacity: .9,
-          dashArray: '8 5', lineJoin: 'round', lineCap: 'round'
-        }));
-      }
-      seg = null;
-    } else {
-      const pt = [routePts[i][0], routePts[i][1]];
-      if (!seg) seg = [pt];
-      else seg.push(pt);
-    }
-  }
-  return lines;
-}
-
-window.toggleMapOpts = function() {
-  const body  = document.getElementById('map-opts-body');
-  const arrow = document.getElementById('map-opts-arrow');
-  const open  = body.classList.toggle('open');
-  arrow.textContent = open ? '▾' : '▸';
-  localStorage.setItem('mapOptsOpen', open ? '1' : '0');
-};
-
-// Restore map-opts state from localStorage
-(function() {
-  if (localStorage.getItem('mapOptsOpen') === '1') {
-    document.getElementById('map-opts-body').classList.add('open');
-    document.getElementById('map-opts-arrow').textContent = '▾';
-  }
-  if (localStorage.getItem('gradientOn') === '1') {
-    document.getElementById('chk-gradient').checked = true;
-    // Delay until after map init
-    setTimeout(onGradientToggle, 500);
-  }
-  if (localStorage.getItem('surfaceOn') === '1') {
-    document.getElementById('chk-surface').checked = true;
-    setTimeout(onSurfaceToggle, 600);
-  }
-})();
-
-// ── Boot ──────────────────────────────────────────────────────────────
-loadRoute().then(() => load());
-loadMcDonalds();
-</script>
 </body>
 </html>
