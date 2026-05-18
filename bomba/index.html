@@ -6,15 +6,15 @@
   <title>Bomba Tracker</title>
   <style>
     :root {
-      --bg:       #0a0f1e;
-      --surface:  #111827;
-      --surface2: #1a2235;
-      --border:   #1e2d4a;
-      --text:     #e8eaf0;
-      --muted:    #6b7a99;
-      --navy:     #1e3a6e;
-      --red:      #e8194c;
-      --teal:     #00c4d4;
+      --bg:      #f5f6f8;
+      --surface: #ffffff;
+      --border:  #e5e7eb;
+      --text:    #111827;
+      --muted:   #6b7280;
+      --navy:    #1e3a6e;
+      --red:     #e8194c;
+      --teal:    #00b4c2;
+      --teal-bg: #e6f9fb;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -25,8 +25,7 @@
     }
 
     #header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
+      background: var(--navy);
       padding: 14px 24px;
       display: flex;
       align-items: center;
@@ -34,27 +33,16 @@
     }
     #header img { height: 38px; }
     #logo-text {
-      font-size: 20px;
-      font-weight: 900;
-      letter-spacing: .04em;
-      color: var(--red);
-      display: none;
+      font-size: 20px; font-weight: 900; letter-spacing: .04em;
+      color: #ffffff; display: none;
     }
-    #header-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    #header-sub { font-size: 11px; color: rgba(255,255,255,.55); margin-top: 2px; }
 
-    #main {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 32px 20px 60px;
-    }
+    #main { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
 
     #section-title {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .1em;
-      color: var(--muted);
-      margin-bottom: 16px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--muted); margin-bottom: 16px;
     }
 
     #race-grid {
@@ -72,47 +60,40 @@
       color: inherit;
       display: flex;
       flex-direction: column;
-      transition: border-color .15s, transform .15s;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      transition: box-shadow .15s, transform .15s;
     }
-    .race-card:hover { border-color: var(--teal); transform: translateY(-2px); }
-    .race-card.finished { opacity: .6; }
-    .race-card.finished:hover { border-color: var(--muted); transform: none; }
+    .race-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); transform: translateY(-2px); }
+    .race-card.finished { opacity: .65; }
+    .race-card.finished:hover { transform: none; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
 
     .card-accent {
       height: 5px;
-      background: linear-gradient(90deg, var(--red), var(--teal));
+      background: linear-gradient(90deg, var(--red), #00c4d4);
     }
     .race-card.finished .card-accent { background: var(--border); }
 
     .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
-
-    .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-
-    .card-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
+    .card-top  { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .card-name { font-size: 15px; font-weight: 700; color: var(--navy); line-height: 1.25; }
 
     .card-badge {
-      font-size: 10px;
-      font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 20px;
-      white-space: nowrap;
-      flex-shrink: 0;
+      font-size: 10px; font-weight: 700; padding: 3px 8px;
+      border-radius: 20px; white-space: nowrap; flex-shrink: 0;
     }
     @keyframes p { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .badge-live     { background: rgba(232,25,76,.15); color: var(--red);   border: 1px solid rgba(232,25,76,.3); }
-    .badge-soon     { background: rgba(0,196,212,.12); color: var(--teal);  border: 1px solid rgba(0,196,212,.3); }
-    .badge-finished { background: rgba(107,122,153,.1); color: var(--muted); border: 1px solid var(--border); }
+    .badge-live     { background: #fde8ed; color: var(--red);  border: 1px solid #f9bece; }
+    .badge-soon     { background: var(--teal-bg); color: #007a87; border: 1px solid #b2e8ed; }
+    .badge-finished { background: #f3f4f6; color: var(--muted); border: 1px solid var(--border); }
 
     .card-meta { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
 
     .card-footer {
       border-top: 1px solid var(--border);
       padding: 10px 16px;
-      font-size: 12px;
+      font-size: 12px; font-weight: 600;
       color: var(--teal);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between;
     }
     .race-card.finished .card-footer { color: var(--muted); }
   </style>
@@ -135,7 +116,7 @@
       <div class="card-body">
         <div class="card-top">
           <div class="card-name">Seven Serpents: Quick Bite! 2026</div>
-          <div class="card-badge badge-live"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:3px;animation:p 1.4s infinite"></span>Live</div>
+          <div class="card-badge badge-live"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:3px;animation:p 1.4s infinite;vertical-align:middle"></span>Live</div>
         </div>
         <div class="card-meta">
           <div>📅 17 mei 2026</div>
@@ -143,9 +124,7 @@
           <div>🚴 Ultra bikepacking</div>
         </div>
       </div>
-      <div class="card-footer">
-        <span>Bekijk tracker</span><span>→</span>
-      </div>
+      <div class="card-footer"><span>Bekijk tracker</span><span>→</span></div>
     </a>
 
     <a class="race-card" href="../utrecht-ultra/index.html">
@@ -161,9 +140,7 @@
           <div>🚴 Ultra cycling</div>
         </div>
       </div>
-      <div class="card-footer">
-        <span>Bekijk tracker</span><span>→</span>
-      </div>
+      <div class="card-footer"><span>Bekijk tracker</span><span>→</span></div>
     </a>
 
     <a class="race-card finished" href="../itdvd26/index.html">
@@ -179,9 +156,7 @@
           <div>🚴 Ultra gravel</div>
         </div>
       </div>
-      <div class="card-footer">
-        <span>Bekijk archief</span><span>→</span>
-      </div>
+      <div class="card-footer"><span>Bekijk archief</span><span>→</span></div>
     </a>
 
   </div>

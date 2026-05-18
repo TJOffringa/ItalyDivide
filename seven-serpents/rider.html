@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zoek langs route — Seven Serpents</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --bg:      #0a0f1e; --surface: #111827; --surface2: #1a2235;
+      --border:  #1e2d4a; --text: #e8eaf0; --muted: #6b7a99;
+      --red: #e8194c; --teal: #00c4d4; --green: #4ade80; --navy: #1e3a6e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system,'Segoe UI',Helvetica,Arial,sans-serif; font-size: 14px; }
+    #app { display: flex; flex-direction: column; height: 100dvh; }
+
+    /* Header */
+    #header {
+      background: var(--navy); padding: 10px 14px;
+      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    }
+    #back { font-size: 11px; color: rgba(255,255,255,.55); text-decoration: none; }
+    #back:hover { color: #fff; }
+    #header h1 { font-size: 14px; font-weight: 700; color: #fff; }
+
+    /* Body split */
+    #body { display: flex; flex: 1; min-height: 0; }
+
+    /* Controls panel */
+    #panel {
+      width: 300px; flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    @media (max-width: 700px) {
+      #body { flex-direction: column; }
+      #panel { width: 100%; height: 55%; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+
+    #panel-inner { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+
+    label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
+
+    select, input[type=text] {
+      width: 100%; padding: 7px 10px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); font-size: 13px; font-family: inherit;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--teal); }
+
+    /* Category chips */
+    #chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      font-size: 11px; padding: 4px 10px; border-radius: 20px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      transition: all .12s; user-select: none;
+    }
+    .chip.on { background: var(--teal); color: #0a0f1e; border-color: var(--teal); font-weight: 600; }
+    .chip.mcd.on { background: #ffbc00; color: #111; border-color: #ffbc00; }
+
+    /* Sliders */
+    .slider-row { display: flex; flex-direction: column; gap: 6px; }
+    .slider-vals { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+    input[type=range] { width: 100%; accent-color: var(--teal); }
+
+    /* Search button */
+    #btn-search {
+      width: 100%; padding: 10px; background: var(--teal); border: none; border-radius: 8px;
+      color: #0a0f1e; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+    }
+    #btn-search:hover { background: #00b0c0; }
+    #btn-search:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* Results */
+    #results-wrap { border-top: 1px solid var(--border); flex-shrink: 0; max-height: 220px; overflow-y: auto; }
+    .poi-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; border-bottom: 1px solid rgba(30,45,74,.5);
+      cursor: pointer; transition: background .1s;
+    }
+    .poi-row:hover { background: var(--surface2); }
+    .poi-icon { font-size: 16px; flex-shrink: 0; }
+    .poi-text { flex: 1; min-width: 0; }
+    .poi-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .poi-meta { font-size: 10px; color: var(--muted); }
+    .poi-km   { font-size: 11px; color: var(--teal); flex-shrink: 0; text-align: right; }
+
+    #status-bar { padding: 6px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); flex-shrink: 0; }
+
+    /* Map */
+    #map { flex: 1; min-width: 0; min-height: 0; }
+    .leaflet-container { background: #0a0f1e; }
+    .leaflet-popup-content-wrapper { background: #111827; border: 1px solid #1e2d4a; border-radius: 8px; color: #e8eaf0; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
+    .leaflet-popup-tip { background: #111827; }
+    .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <a id="back" href="index.html">← Tracker</a>
+    <h1>🔍 Zoek langs route</h1>
+  </div>
+
+  <div id="body">
+    <div id="panel">
+      <div id="panel-inner">
+
+        <div>
+          <label>Rijder</label>
+          <select id="rider-sel"><option value="">— Laden…</option></select>
+        </div>
+
+        <div>
+          <label>Categorie</label>
+          <div id="chips">
+            <span class="chip" data-q='node["amenity"~"drinking_water|water_point|fountain"]|node["natural"="spring"]["drinking_water"!="no"]' data-cat="Water">💧 Water</span>
+            <span class="chip" data-q='node["amenity"~"restaurant|fast_food"]' data-cat="Eten">🍽 Eten</span>
+            <span class="chip mcd" data-q='node["name"~"McDonald|McDonalds|McDo",i]' data-cat="McDonald\'s">🍔 McD</span>
+            <span class="chip" data-q='node["shop"~"supermarket|convenience"]' data-cat="Supermarkt">🛒 Super</span>
+            <span class="chip" data-q='node["shop"="bakery"]' data-cat="Bakker">🥖 Bakker</span>
+            <span class="chip" data-q='node["amenity"~"cafe|pub|bar"]' data-cat="Café">☕ Café/Bar</span>
+            <span class="chip" data-q='node["tourism"~"camp_site|caravan_site"]' data-cat="Camping">⛺ Camping</span>
+            <span class="chip" data-q='node["tourism"~"hotel|hostel|guest_house|chalet"]' data-cat="Hotel">🛏 Hotel</span>
+            <span class="chip" data-q='node["shop"="bicycle"]|node["amenity"="bicycle_repair_station"]' data-cat="Fiets">🚲 Fiets</span>
+            <span class="chip" data-q='node["amenity"="pharmacy"]' data-cat="Apotheek">💊 Apotheek</span>
+            <span class="chip" data-q='node["amenity"="atm"]' data-cat="ATM">🏧 ATM</span>
+            <span class="chip" data-q='node["amenity"="toilets"]' data-cat="Toiletten">🚻 Toiletten</span>
+          </div>
+        </div>
+
+        <div class="slider-row">
+          <label>Afstand vooruit op route: <span id="radius-val">50</span> km</label>
+          <input type="range" id="radius-sl" min="1" max="200" value="50"
+                 oninput="document.getElementById('radius-val').textContent=this.value">
+          <div class="slider-vals"><span>1 km</span><span>200 km</span></div>
+        </div>
+
+        <div class="slider-row">
+          <label>Max afstand van route: <span id="maxdist-val">2.0</span> km</label>
+          <input type="range" id="maxdist-sl" min="1" max="50" value="20"
+                 oninput="document.getElementById('maxdist-val').textContent=(this.value/10).toFixed(1)">
+          <div class="slider-vals"><span>0.1 km</span><span>5.0 km</span></div>
+        </div>
+
+        <button id="btn-search" onclick="doSearch()" disabled>Zoeken</button>
+      </div>
+
+      <div id="status-bar">Selecteer een rijder om te beginnen.</div>
+      <div id="results-wrap"></div>
+    </div>
+
+    <div id="map"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+const API = 'https://tracker.klikschaak.nl';
+const RC  = 'ss-qb26';
+const RF  = 'ssqb26_v1_track.geojson';
+
+let map, riderMarker, radiusCircle;
+let routePts = [];   // [[lat, lon], ...]
+let routeCum = [];   // cumulative km
+let riders   = [];
+let poiMarkers = [];
+let activeChip = null;
+
+// ── Haversine ──────────────────────────────────────────────────────────
+function hav([la1, lo1], [la2, lo2]) {
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (la2 - la1) * r, dLon = (lo2 - lo1) * r;
+  const a = Math.sin(dLat/2)**2 + Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function distToRoute([lat, lon]) {
+  let min = Infinity;
+  for (let i = 1; i < routePts.length; i++) {
+    const [aLat, aLon] = routePts[i-1], [bLat, bLon] = routePts[i];
+    const dLat = bLat-aLat, dLon = bLon-aLon;
+    const len2 = dLat*dLat + dLon*dLon;
+    const t = len2 ? Math.max(0, Math.min(1, ((lat-aLat)*dLat + (lon-aLon)*dLon) / len2)) : 0;
+    min = Math.min(min, hav([lat, lon], [aLat+t*dLat, aLon+t*dLon]));
+  }
+  return min;
+}
+
+function progressOnRoute([lat, lon]) {
+  let best = Infinity, idx = 0;
+  for (let i = 0; i < routePts.length; i++) {
+    const d = (lat-routePts[i][0])**2 + (lon-routePts[i][1])**2;
+    if (d < best) { best = d; idx = i; }
+  }
+  return routeCum[idx];
+}
+
+// ── Init map ───────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([46.05, 14.50], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
+  }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+}
+
+// ── Load route ─────────────────────────────────────────────────────────
+async function loadRoute() {
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/route?f=${RF}`);
+    const geojson = await r.json();
+
+    // Parse MultiLineString coords [lon_str, lat_str] → [[lat, lon], ...]
+    const pts = [];
+    for (const feat of (geojson.features || [])) {
+      const geom = feat.geometry;
+      const lines = geom.type === 'MultiLineString' ? geom.coordinates : [geom.coordinates];
+      for (const line of lines)
+        for (const c of line)
+          pts.push([parseFloat(c[1]), parseFloat(c[0])]);
+    }
+
+    // Downsample to max 3000 pts for performance
+    const step = Math.max(1, Math.floor(pts.length / 3000));
+    routePts = pts.filter((_, i) => i % step === 0);
+    routeCum = [0];
+    for (let i = 1; i < routePts.length; i++)
+      routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
+
+    // Draw route on map
+    L.geoJSON(geojson, {
+      style: { color: '#00c4d4', weight: 2, opacity: .5 },
+      coordsToLatLng: c => L.latLng(parseFloat(c[1]), parseFloat(c[0]))
+    }).addTo(map);
+
+    setStatus(`Route geladen: ${routeCum[routeCum.length-1].toFixed(0)} km`);
+  } catch(e) { setStatus('Route laden mislukt: ' + e.message); }
+}
+
+// ── Load riders ────────────────────────────────────────────────────────
+async function loadRiders() {
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/positions`);
+    riders = await r.json();
+    const sel = document.getElementById('rider-sel');
+    const sorted = [...riders].filter(r => !r.scratched)
+      .sort((a, b) => (b.distanceOnTrack||0) - (a.distanceOnTrack||0));
+
+    sel.innerHTML = '<option value="">— Kies rijder —</option>';
+    for (const rd of sorted) {
+      const opt = document.createElement('option');
+      opt.value = rd.deviceId;
+      opt.textContent = `#${rd.teamNumber} ${rd.name} (${(rd.distanceOnTrack||0).toFixed(0)} km)`;
+      sel.appendChild(opt);
+    }
+
+    // Pre-select from URL param
+    const urlId = new URLSearchParams(location.search).get('id');
+    if (urlId) { sel.value = urlId; onRiderChange(); }
+  } catch(e) { setStatus('Rijders laden mislukt: ' + e.message); }
+}
+
+function onRiderChange() {
+  const id = document.getElementById('rider-sel').value;
+  const rd = riders.find(r => r.deviceId == id);
+  if (!rd) return;
+
+  if (riderMarker) riderMarker.remove();
+  if (radiusCircle) radiusCircle.remove();
+
+  riderMarker = L.circleMarker([rd.latitude, rd.longitude], {
+    radius: 8, color: rd.riderColor, fillColor: rd.riderColor, fillOpacity: .9, weight: 2
+  }).addTo(map).bindPopup(`<b style="color:${rd.riderColor}">${rd.name}</b><br><small>${(rd.distanceOnTrack||0).toFixed(1)} km</small>`);
+
+  map.setView([rd.latitude, rd.longitude], 11);
+  document.getElementById('btn-search').disabled = false;
+  updateRadiusCircle(rd);
+}
+
+function updateRadiusCircle(rd) {
+  if (!rd) return;
+  const radiusKm = parseInt(document.getElementById('radius-sl').value);
+  if (radiusCircle) radiusCircle.remove();
+  radiusCircle = L.circle([rd.latitude, rd.longitude], {
+    radius: radiusKm * 1000,
+    color: '#00c4d4', fillColor: '#00c4d4', fillOpacity: .04, weight: 1, dashArray: '4 4'
+  }).addTo(map);
+}
+
+// ── Chip selection ─────────────────────────────────────────────────────
+document.getElementById('chips').addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  if (activeChip === chip) {
+    chip.classList.remove('on');
+    activeChip = null;
+  } else {
+    if (activeChip) activeChip.classList.remove('on');
+    chip.classList.add('on');
+    activeChip = chip;
+  }
+});
+
+// Auto-select McD if URL has ?cat=mcd
+if (new URLSearchParams(location.search).get('cat') === 'mcd') {
+  const mcdChip = document.querySelector('.chip.mcd');
+  if (mcdChip) { mcdChip.classList.add('on'); activeChip = mcdChip; }
+}
+
+// ── Search ─────────────────────────────────────────────────────────────
+async function doSearch() {
+  const id = document.getElementById('rider-sel').value;
+  const rd = riders.find(r => r.deviceId == id);
+  if (!rd) return setStatus('Geen rijder geselecteerd.');
+  if (!activeChip) return setStatus('Kies eerst een categorie.');
+  if (!routePts.length) return setStatus('Route nog niet geladen.');
+
+  const radiusKm = parseInt(document.getElementById('radius-sl').value);
+  const maxdist  = parseFloat(document.getElementById('maxdist-sl').value) / 10;
+  const query    = activeChip.dataset.q;
+  const catLabel = activeChip.dataset.cat;
+
+  setStatus('Zoeken…');
+  document.getElementById('btn-search').disabled = true;
+  poiMarkers.forEach(m => m.remove()); poiMarkers = [];
+  document.getElementById('results-wrap').innerHTML = '';
+
+  updateRadiusCircle(rd);
+
+  // Build Overpass query — circle around rider position
+  const radiusM = radiusKm * 1000;
+  const filters = query.split('|');
+  const unions  = filters.map(f => `  ${f}(around:${radiusM},${rd.latitude},${rd.longitude});`).join('\n');
+  const oq = `[out:json][timeout:30];\n(\n${unions}\n);\nout body;`;
+
+  try {
+    const res  = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST', body: 'data=' + encodeURIComponent(oq)
+    });
+    const data = await res.json();
+    const riderKm = progressOnRoute([rd.latitude, rd.longitude]);
+
+    // Filter by: ahead on route + max distance from route
+    const pois = (data.elements || [])
+      .map(el => {
+        const dRoute = distToRoute([el.lat, el.lon]);
+        const kmOn   = progressOnRoute([el.lat, el.lon]);
+        return { el, dRoute, kmOn, ahead: kmOn - riderKm };
+      })
+      .filter(p => p.dRoute <= maxdist && p.ahead >= -maxdist && p.ahead <= radiusKm)
+      .sort((a, b) => a.ahead - b.ahead)
+      .slice(0, 80);
+
+    if (!pois.length) {
+      setStatus(`Niets gevonden voor "${catLabel}" binnen ${radiusKm} km / ${maxdist} km van route.`);
+      document.getElementById('btn-search').disabled = false;
+      return;
+    }
+
+    setStatus(`${pois.length} resultaten voor "${catLabel}"`);
+    renderResults(pois, catLabel);
+  } catch(e) {
+    setStatus('Zoekfout: ' + e.message);
+  }
+  document.getElementById('btn-search').disabled = false;
+}
+
+function renderResults(pois, catLabel) {
+  const wrap = document.getElementById('results-wrap');
+  wrap.innerHTML = '';
+  const icon = activeChip?.textContent?.trim().split(' ')[0] || '📍';
+
+  for (const { el, dRoute, ahead } of pois) {
+    const name = el.tags?.name || catLabel;
+    const aheadTxt = (ahead >= 0 ? '+' : '') + ahead.toFixed(1) + ' km';
+
+    // Map marker
+    const m = L.circleMarker([el.lat, el.lon], {
+      radius: 6, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: .9, weight: 1.5
+    }).addTo(map).bindPopup(`<b>${name}</b><br><small>${aheadTxt} vooruit · ${dRoute.toFixed(2)} km van route</small>`);
+    poiMarkers.push(m);
+
+    // List row
+    const row = document.createElement('div');
+    row.className = 'poi-row';
+    row.innerHTML = `
+      <span class="poi-icon">${icon}</span>
+      <div class="poi-text">
+        <div class="poi-name">${name}</div>
+        <div class="poi-meta">${dRoute.toFixed(2)} km van route</div>
+      </div>
+      <div class="poi-km">${aheadTxt}</div>`;
+    row.addEventListener('click', () => { map.setView([el.lat, el.lon], 15); m.openPopup(); });
+    wrap.appendChild(row);
+  }
+}
+
+function setStatus(msg) {
+  document.getElementById('status-bar').textContent = msg;
+}
+
+// ── Slider live update ─────────────────────────────────────────────────
+document.getElementById('radius-sl').addEventListener('input', () => {
+  const id = document.getElementById('rider-sel').value;
+  const rd = riders.find(r => r.deviceId == id);
+  if (rd) updateRadiusCircle(rd);
+});
+
+document.getElementById('rider-sel').addEventListener('change', onRiderChange);
+
+// ── Boot ───────────────────────────────────────────────────────────────
+initMap();
+loadRoute();
+loadRiders();
+</script>
+</body>
+</html>
