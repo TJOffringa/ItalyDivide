@@ -112,11 +112,12 @@
     }
     .rider-row:hover { background: var(--surface2); }
     .rider-row.scratched-row { opacity: .4; }
-    .r-rank  { font-size: 11px; color: var(--muted); width: 22px; text-align: right; flex-shrink: 0; }
-    .r-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .r-name  { flex: 1; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .r-km    { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+    .r-rank    { font-size: 11px; color: var(--muted); width: 22px; text-align: right; flex-shrink: 0; }
+    .r-dot     { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .r-name    { flex: 1; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .r-km      { font-size: 11px; color: var(--muted); flex-shrink: 0; }
     .r-scratch { font-size: 10px; color: #f87171; flex-shrink: 0; }
+    .r-fin     { font-size: 10px; font-weight: 700; color: var(--green); flex-shrink: 0; }
 
     /* ── Map ── */
     #map { flex: 1; min-width: 0; position: relative; }
@@ -206,6 +207,7 @@ const INTERVAL = 300;
 let map, routeLayer;
 let markerMap   = {};
 let riders      = [];
+let finishKm    = Infinity;   // set once positions are loaded
 let sidebarOpen = window.innerWidth > 640;
 let cdSecs = INTERVAL, cdTimer;
 
@@ -240,12 +242,16 @@ async function loadPositions() {
     const r = await fetch(`${API}/api/fmc/${RC}/positions`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     riders = await r.json();
+    // Detect finish distance: most common max distanceOnTrack among non-scratched
+    const dists = riders.filter(r => !r.scratched).map(r => r.distanceOnTrack || 0);
+    finishKm = dists.length ? Math.max(...dists) : Infinity;
     renderMarkers();
     renderList();
-    const active    = riders.filter(r => !r.scratched).length;
-    const scratched = riders.length - active;
-    document.getElementById('pill-active').textContent  = `${active} rijdend`;
-    document.getElementById('pill-scratch').textContent = `${scratched} uitgevallen`;
+    const finished  = riders.filter(r => !r.scratched && r.distanceOnTrack >= finishKm - 0.5).length;
+    const active    = riders.filter(r => !r.scratched && r.distanceOnTrack  < finishKm - 0.5).length;
+    const scratched = riders.filter(r =>  r.scratched).length;
+    document.getElementById('pill-active').textContent  = `${finished} fin · ${active} rijdend`;
+    document.getElementById('pill-scratch').textContent = `${scratched} DNF`;
     document.getElementById('status-txt').textContent   =
       `${riders.length} riders · ${new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
   } catch(e) {
@@ -300,10 +306,11 @@ function updateLabelVisibility() {
 }
 
 function popupHtml(rd) {
-  const km     = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
-  const status = rd.scratched
-    ? '<span style="color:#f87171">DNF</span>'
-    : '<span style="color:#4ade80">Rijdend</span>';
+  const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+  const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
+  const status   = rd.scratched  ? '<span style="color:#f87171">DNF</span>'
+    : finished                   ? '<span style="color:#4ade80">✓ Gefinisht</span>'
+                                 : '<span style="color:#4ade80">Rijdend</span>';
   return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
     <div class="pu-meta" style="margin-top:6px">
@@ -325,9 +332,23 @@ function renderList() {
   const filtered = filterText ? sorted.filter(r => r.name.toLowerCase().includes(filterText)) : sorted;
   const el = document.getElementById('rider-list');
   el.innerHTML = '';
+
   let rank = 0;
+  let riderSepAdded = false;
+
   for (const rd of filtered) {
+    const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
     if (!rd.scratched) rank++;
+
+    // Separator between finishers and still-racing riders
+    if (!finished && !rd.scratched && !riderSepAdded && !filterText) {
+      const sep = document.createElement('div');
+      sep.style.cssText = 'padding:4px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border)';
+      sep.textContent = 'Nog onderweg';
+      el.appendChild(sep);
+      riderSepAdded = true;
+    }
+
     const km  = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
     const row = document.createElement('div');
     row.className = 'rider-row' + (rd.scratched ? ' scratched-row' : '');
@@ -335,7 +356,9 @@ function renderList() {
       <span class="r-rank">${rd.scratched ? '' : rank}</span>
       <span class="r-dot" style="background:${rd.riderColor || '#888'}"></span>
       <span class="r-name">${rd.name}</span>
-      ${rd.scratched ? '<span class="r-scratch">DNF</span>' : `<span class="r-km">${km} km</span>`}`;
+      ${rd.scratched  ? '<span class="r-scratch">DNF</span>'
+      : finished      ? '<span class="r-fin">✓ Fin</span>'
+                      : `<span class="r-km">${km} km</span>`}`;
     row.addEventListener('click', () => {
       const m = markerMap[rd.deviceId];
       if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
