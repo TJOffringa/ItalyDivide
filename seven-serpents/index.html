@@ -260,11 +260,8 @@ async function loadPositions() {
 }
 
 // ── Markers ────────────────────────────────────────────────────────────
-const LABEL_ZOOM = 11; // show names at this zoom and above
-
 function renderMarkers() {
   const seen    = new Set();
-  const showLbl = map.getZoom() >= LABEL_ZOOM;
 
   for (const rd of riders) {
     seen.add(rd.deviceId);
@@ -288,7 +285,6 @@ function renderMarkers() {
           permanent: true, direction: 'right', offset: [7, 0],
           className: 'rider-label', opacity: 1
         });
-        if (!showLbl) m.getTooltip()?.setOpacity(0);
       }
       markerMap[rd.deviceId] = m;
     }
@@ -298,12 +294,7 @@ function renderMarkers() {
   }
 }
 
-function updateLabelVisibility() {
-  const show = map.getZoom() >= LABEL_ZOOM;
-  for (const m of Object.values(markerMap)) {
-    m.getTooltip()?.setOpacity(show ? 1 : 0);
-  }
-}
+function updateLabelVisibility() {}
 
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
