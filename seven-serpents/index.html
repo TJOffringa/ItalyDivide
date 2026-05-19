@@ -222,10 +222,10 @@ let finishKm    = Infinity;
 let sidebarOpen = window.innerWidth > 640;
 let cdSecs = INTERVAL, cdTimer;
 
-let routePts     = [];   // [[lat,lon], ...]
-let routeCum     = [];   // cumulative km per point
-let gradientLayer = null;
-let surfaceLayer  = null;
+let routePts      = [];   // [[lat,lon], ...]
+let routeCum      = [];   // cumulative km per point
+let gradientLayer = null; // array of Leaflet polylines
+let surfaceLayer  = null; // array of Leaflet polylines
 
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
@@ -334,14 +334,83 @@ function renderMarkers() {
 
 function updateLabelVisibility() {}
 
-// ── Gradient helpers ───────────────────────────────────────────────────
+// ── Gradient overlay (static pre-generated JSON) ───────────────────────
+const GRADIENT_STEP = 4;
+
+const GRAD_STOPS = [
+  [-8,       '#1e3a8a'],
+  [-4,       '#2563eb'],
+  [-1.5,     '#93c5fd'],
+  [ 1.5,     '#4ade80'],
+  [ 4,       '#fde047'],
+  [ 8,       '#f97316'],
+  [12,       '#ef4444'],
+  [Infinity, '#111827'],
+];
 function gradColor(pct) {
-  if (pct < -6)  return '#0066dd';
-  if (pct < -2)  return '#66aaff';
-  if (pct < 2)   return '#22cc55';
-  if (pct < 5)   return '#ffcc00';
-  if (pct < 8)   return '#ff8800';
-  return '#ff2200';
+  for (const [max, col] of GRAD_STOPS) if (pct < max) return col;
+  return '#111827';
+}
+
+function buildGradientLines(gradPts) {
+  // Rolling elevation smoothing (window ±2)
+  const sm = gradPts.map((p, i) => {
+    const s = Math.max(0, i - 2), e = Math.min(gradPts.length - 1, i + 2);
+    let sum = 0, n = 0;
+    for (let j = s; j <= e; j++) { sum += gradPts[j][2]; n++; }
+    return [p[0], p[1], sum / n];
+  });
+
+  const lines = [];
+  let col = null, seg = [];
+
+  for (let i = 0; i < sm.length - 1; i++) {
+    const distKm = hav([sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]);
+    const grad   = distKm > 0.03 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
+    const c      = gradColor(grad);
+
+    const ri0 = i * GRADIENT_STEP;
+    const ri1 = Math.min((i + 1) * GRADIENT_STEP + 1, routePts.length);
+    const sub  = routePts.length > 0
+      ? routePts.slice(ri0, ri1).map(p => [p[0], p[1]])
+      : [[sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]];
+
+    if (c !== col) {
+      if (seg.length >= 2)
+        lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85,
+          lineJoin: 'round', lineCap: 'butt' }));
+      col = c; seg = sub.slice();
+    } else {
+      if (sub.length > 1) seg.push(...sub.slice(1));
+    }
+  }
+  if (seg.length >= 2)
+    lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round' }));
+  return lines;
+}
+
+// ── Surface overlay (static pre-generated JSON) ────────────────────────
+function buildSurfaceLines(surf) {
+  if (!routePts.length || !surf.length) return [];
+  const lines = [];
+  let seg = null;
+  const len = Math.min(routePts.length, surf.length);
+
+  for (let i = 0; i <= len; i++) {
+    const unpaved = i < len && surf[i] === 1;
+    if (!unpaved) {
+      if (seg && seg.length >= 2)
+        lines.push(L.polyline(seg, {
+          color: '#b45309', weight: 5, opacity: .9,
+          dashArray: '8 5', lineJoin: 'round', lineCap: 'round',
+        }));
+      seg = null;
+    } else {
+      const pt = [routePts[i][0], routePts[i][1]];
+      if (!seg) seg = [pt]; else seg.push(pt);
+    }
+  }
+  return lines;
 }
 
 function showLegend(html) {
@@ -353,79 +422,47 @@ function hideLegend() {
 }
 
 function clearOverlay() {
-  if (gradientLayer) { gradientLayer.remove(); gradientLayer = null; }
-  if (surfaceLayer)  { surfaceLayer.remove();  surfaceLayer  = null; }
+  if (gradientLayer) { gradientLayer.forEach(l => l.remove()); gradientLayer = null; }
+  if (surfaceLayer)  { surfaceLayer.forEach(l => l.remove());  surfaceLayer  = null; }
   if (routeLayer) routeLayer.setStyle({ opacity: .6 });
   document.getElementById('btn-helling').classList.remove('active');
   document.getElementById('btn-surface').classList.remove('active');
   hideLegend();
 }
 
-// ── Gradient overlay ───────────────────────────────────────────────────
+let gradientPts = null;
+let surfacePts  = null;
+
 async function toggleGradient() {
   const btn = document.getElementById('btn-helling');
   const wasActive = btn.classList.contains('active');
   clearOverlay();
   if (wasActive) return;
 
-  if (!routePts.length) return;
   btn.textContent = '⛰ Laden…';
-
   try {
-    // Sample ~100 pts (≈ 5 km apart for 523 km route)
-    const S = Math.max(1, Math.floor(routePts.length / 100));
-    const sampled = routePts.filter((_, i) => i % S === 0);
-
-    const elevations = [];
-    for (let i = 0; i < sampled.length; i += 90) {
-      const batch = sampled.slice(i, i + 90);
-      const locs  = batch.map(([la,lo]) => `${la.toFixed(5)},${lo.toFixed(5)}`).join('|');
-      const r = await fetch(`https://api.opentopodata.org/v1/srtm30m?locations=${locs}`);
-      if (!r.ok) throw new Error('Elevation API ' + r.status);
-      const d = await r.json();
-      if (d.status !== 'OK') throw new Error(d.error || 'Elevation fout');
-      elevations.push(...d.results.map(x => x.elevation ?? 0));
+    if (!gradientPts) {
+      const r = await fetch('route-gradient.json');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      gradientPts = await r.json();
     }
-
-    const lg = L.layerGroup();
-    for (let i = 0; i < sampled.length - 1; i++) {
-      const [la1,lo1] = sampled[i], [la2,lo2] = sampled[i+1];
-      const distM = hav([la1,lo1],[la2,lo2]) * 1000;
-      const dH    = (elevations[i+1]||0) - (elevations[i]||0);
-      const pct   = distM > 10 ? (dH / distM) * 100 : 0;
-      L.polyline([[la1,lo1],[la2,lo2]], {
-        color: gradColor(pct), weight: 4, opacity: .9
-      }).bindTooltip(`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`).addTo(lg);
-    }
-    gradientLayer = lg;
-    lg.addTo(map);
+    const lines = buildGradientLines(gradientPts);
+    gradientLayer = lines;
+    lines.forEach(l => l.addTo(map));
     if (routeLayer) routeLayer.setStyle({ opacity: 0 });
     btn.classList.add('active');
     showLegend(`
-      <div class="leg-row"><span class="leg-swatch" style="background:#0066dd"></span> Steil dal (&lt; -6%)</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#66aaff"></span> Dal (-6 tot -2%)</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#22cc55"></span> Vlak (-2 tot 2%)</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#ffcc00"></span> Lichte klim (2–5%)</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#ff8800"></span> Klim (5–8%)</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#ff2200"></span> Steil (&gt; 8%)</div>`);
+      <div class="leg-row"><span class="leg-swatch" style="background:#1e3a8a"></span> Steil dal (&lt; -8%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#2563eb"></span> Afdaling (-8 tot -4%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#93c5fd"></span> Lichte afdaling (-4 tot -1.5%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#4ade80"></span> Vlak (-1.5 tot 1.5%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#fde047"></span> Lichte klim (1.5–4%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#f97316"></span> Klim (4–8%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#ef4444"></span> Steil (&gt; 8%)</div>`);
   } catch(e) {
-    console.error('Gradient:', e);
-    clearOverlay();
+    console.error('Gradient:', e); clearOverlay();
   }
   btn.textContent = '⛰ Helling';
-}
-
-// ── Surface overlay ────────────────────────────────────────────────────
-function surfColor(surf) {
-  if (!surf) return '#999';
-  const s = surf.toLowerCase();
-  if (s === 'asphalt' || s === 'paved' || s === 'concrete' || s === 'tarmac') return '#888';
-  if (s === 'compacted' || s === 'fine_gravel') return '#c8a455';
-  if (s.includes('gravel') || s === 'unpaved') return '#b07030';
-  if (s === 'ground' || s === 'dirt' || s === 'earth' || s === 'mud') return '#7a5525';
-  if (s === 'grass' || s === 'sand') return '#6a9a40';
-  if (s === 'sett' || s.includes('cobblestone') || s === 'paving_stones') return '#606060';
-  return '#aaa';
 }
 
 async function toggleSurface() {
@@ -434,63 +471,23 @@ async function toggleSurface() {
   clearOverlay();
   if (wasActive) return;
 
-  if (!routePts.length) return;
   btn.textContent = '🛣 Laden…';
-
   try {
-    // Sample ~50 pts along the route
-    const S = Math.max(1, Math.floor(routePts.length / 50));
-    const sampled = routePts.filter((_, i) => i % S === 0);
-
-    const unions = sampled.map(([la,lo]) =>
-      `way["highway"]["surface"](around:80,${la.toFixed(5)},${lo.toFixed(5)});`
-    ).join('\n');
-    const oq = `[out:json][timeout:60];\n(\n${unions}\n);\nout body geom;`;
-
-    const r = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST', body: 'data=' + encodeURIComponent(oq)
-    });
-    if (!r.ok) throw new Error('Overpass ' + r.status);
-    const data = await r.json();
-    const ways = data.elements || [];
-
-    // For each sampled segment, find nearest OSM way and use its surface
-    function nearestSurf(lat, lon) {
-      let best = Infinity, surf = null;
-      for (const w of ways) {
-        if (!w.geometry) continue;
-        for (const nd of w.geometry) {
-          const d = (lat - nd.lat)**2 + (lon - nd.lon)**2;
-          if (d < best) { best = d; surf = w.tags?.surface; }
-        }
-      }
-      return surf || null;
+    if (!surfacePts) {
+      const r = await fetch('route-surface.json');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      surfacePts = await r.json();
     }
-
-    const lg = L.layerGroup();
-    for (let i = 0; i < sampled.length - 1; i++) {
-      const [la1,lo1] = sampled[i], [la2,lo2] = sampled[i+1];
-      const midLat = (la1+la2)/2, midLon = (lo1+lo2)/2;
-      const surf = nearestSurf(midLat, midLon);
-      L.polyline([[la1,lo1],[la2,lo2]], {
-        color: surfColor(surf), weight: 4, opacity: .9
-      }).bindTooltip(surf || 'onbekend').addTo(lg);
-    }
-    surfaceLayer = lg;
-    lg.addTo(map);
+    const lines = buildSurfaceLines(surfacePts);
+    surfaceLayer = lines;
+    lines.forEach(l => l.addTo(map));
     if (routeLayer) routeLayer.setStyle({ opacity: 0 });
     btn.classList.add('active');
     showLegend(`
-      <div class="leg-row"><span class="leg-swatch" style="background:#888"></span> Asfalt / verhard</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#c8a455"></span> Compacted / fijn gravel</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#b07030"></span> Gravel / onverhard</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#7a5525"></span> Grond / aarde</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#6a9a40"></span> Gras / zand</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#606060"></span> Kassei / stenen</div>
-      <div class="leg-row"><span class="leg-swatch" style="background:#999"></span> Onbekend</div>`);
+      <div class="leg-row"><span class="leg-swatch" style="background:#4ade80"></span> Verhard (asfalt/beton)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#b45309; border-top: 1px dashed #b45309;"></span> Onverhard (gravel/dirt/gras)</div>`);
   } catch(e) {
-    console.error('Surface:', e);
-    clearOverlay();
+    console.error('Surface:', e); clearOverlay();
   }
   btn.textContent = '🛣 Ondergrond';
 }
