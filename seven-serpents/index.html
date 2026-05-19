@@ -142,6 +142,17 @@
       white-space: nowrap; pointer-events: none;
     }
 
+    /* ── Overlay legend ── */
+    #overlay-legend {
+      display: none;
+      position: absolute; bottom: 40px; left: 10px; z-index: 800;
+      background: rgba(10,15,30,.88); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 10px; font-size: 10px;
+      pointer-events: none; line-height: 1.6;
+    }
+    .leg-row { display: flex; align-items: center; gap: 5px; }
+    .leg-swatch { width: 16px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+
     /* ── Popups ── */
     .leaflet-popup-content-wrapper { background: #111827; border: 1px solid #1e2d4a; border-radius: 8px; color: #e8eaf0; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
     .leaflet-popup-tip { background: #111827; }
@@ -177,10 +188,9 @@
 
       <div id="controls">
         <a class="ctrl-btn" href="rider.html" title="Zoek faciliteiten langs de route">🔍 Langs route</a>
-        <a class="ctrl-btn mcd" href="rider.html?cat=mcd" title="McDonald's langs de route">🍔 McD</a>
         <a class="ctrl-btn disabled" title="Race Flow: geen historische data beschikbaar voor deze race">📊 Race Flow</a>
-        <button class="ctrl-btn disabled" title="Hellingshoek: wordt toegevoegd">⛰ Helling</button>
-        <button class="ctrl-btn disabled" title="Ondergrond: wordt toegevoegd">🛣 Ondergrond</button>
+        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek">⛰ Helling</button>
+        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
       </div>
 
       <div id="search-wrap">
@@ -192,6 +202,7 @@
 
     <div id="map">
       <div id="refresh-bar">↺ —</div>
+      <div id="overlay-legend"></div>
     </div>
   </div>
 </div>
@@ -207,9 +218,14 @@ const INTERVAL = 300;
 let map, routeLayer;
 let markerMap   = {};
 let riders      = [];
-let finishKm    = Infinity;   // set once positions are loaded
+let finishKm    = Infinity;
 let sidebarOpen = window.innerWidth > 640;
 let cdSecs = INTERVAL, cdTimer;
+
+let routePts     = [];   // [[lat,lon], ...]
+let routeCum     = [];   // cumulative km per point
+let gradientLayer = null;
+let surfaceLayer  = null;
 
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
@@ -223,6 +239,13 @@ function initMap() {
   setTimeout(() => map.invalidateSize(), 250);
 }
 
+// ── Haversine ──────────────────────────────────────────────────────────
+function hav([la1,lo1],[la2,lo2]) {
+  const R = 6371, r = Math.PI/180;
+  const a = Math.sin((la2-la1)*r/2)**2 + Math.cos(la1*r)*Math.cos(la2*r)*Math.sin((lo2-lo1)*r/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 // ── Route ──────────────────────────────────────────────────────────────
 async function loadRoute() {
   try {
@@ -233,6 +256,21 @@ async function loadRoute() {
       style: { color: '#00c4d4', weight: 2, opacity: .6 },
       coordsToLatLng: c => L.latLng(parseFloat(c[1]), parseFloat(c[0]))
     }).addTo(map);
+
+    // Build routePts for gradient/surface overlays
+    const pts = [];
+    for (const feat of (geojson.features || [])) {
+      const geom = feat.geometry;
+      const lines = geom.type === 'MultiLineString' ? geom.coordinates : [geom.coordinates];
+      for (const line of lines)
+        for (const c of line)
+          pts.push([parseFloat(c[1]), parseFloat(c[0])]);
+    }
+    const step = Math.max(1, Math.floor(pts.length / 2000));
+    routePts = pts.filter((_, i) => i % step === 0);
+    routeCum = [0];
+    for (let i = 1; i < routePts.length; i++)
+      routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
   } catch(e) { console.warn('Route load failed:', e.message); }
 }
 
@@ -295,6 +333,167 @@ function renderMarkers() {
 }
 
 function updateLabelVisibility() {}
+
+// ── Gradient helpers ───────────────────────────────────────────────────
+function gradColor(pct) {
+  if (pct < -6)  return '#0066dd';
+  if (pct < -2)  return '#66aaff';
+  if (pct < 2)   return '#22cc55';
+  if (pct < 5)   return '#ffcc00';
+  if (pct < 8)   return '#ff8800';
+  return '#ff2200';
+}
+
+function showLegend(html) {
+  const el = document.getElementById('overlay-legend');
+  el.innerHTML = html; el.style.display = 'block';
+}
+function hideLegend() {
+  document.getElementById('overlay-legend').style.display = 'none';
+}
+
+function clearOverlay() {
+  if (gradientLayer) { gradientLayer.remove(); gradientLayer = null; }
+  if (surfaceLayer)  { surfaceLayer.remove();  surfaceLayer  = null; }
+  if (routeLayer) routeLayer.setStyle({ opacity: .6 });
+  document.getElementById('btn-helling').classList.remove('active');
+  document.getElementById('btn-surface').classList.remove('active');
+  hideLegend();
+}
+
+// ── Gradient overlay ───────────────────────────────────────────────────
+async function toggleGradient() {
+  const btn = document.getElementById('btn-helling');
+  const wasActive = btn.classList.contains('active');
+  clearOverlay();
+  if (wasActive) return;
+
+  if (!routePts.length) return;
+  btn.textContent = '⛰ Laden…';
+
+  try {
+    // Sample ~100 pts (≈ 5 km apart for 523 km route)
+    const S = Math.max(1, Math.floor(routePts.length / 100));
+    const sampled = routePts.filter((_, i) => i % S === 0);
+
+    const elevations = [];
+    for (let i = 0; i < sampled.length; i += 90) {
+      const batch = sampled.slice(i, i + 90);
+      const locs  = batch.map(([la,lo]) => `${la.toFixed(5)},${lo.toFixed(5)}`).join('|');
+      const r = await fetch(`https://api.opentopodata.org/v1/srtm30m?locations=${locs}`);
+      if (!r.ok) throw new Error('Elevation API ' + r.status);
+      const d = await r.json();
+      if (d.status !== 'OK') throw new Error(d.error || 'Elevation fout');
+      elevations.push(...d.results.map(x => x.elevation ?? 0));
+    }
+
+    const lg = L.layerGroup();
+    for (let i = 0; i < sampled.length - 1; i++) {
+      const [la1,lo1] = sampled[i], [la2,lo2] = sampled[i+1];
+      const distM = hav([la1,lo1],[la2,lo2]) * 1000;
+      const dH    = (elevations[i+1]||0) - (elevations[i]||0);
+      const pct   = distM > 10 ? (dH / distM) * 100 : 0;
+      L.polyline([[la1,lo1],[la2,lo2]], {
+        color: gradColor(pct), weight: 4, opacity: .9
+      }).bindTooltip(`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`).addTo(lg);
+    }
+    gradientLayer = lg;
+    lg.addTo(map);
+    if (routeLayer) routeLayer.setStyle({ opacity: 0 });
+    btn.classList.add('active');
+    showLegend(`
+      <div class="leg-row"><span class="leg-swatch" style="background:#0066dd"></span> Steil dal (&lt; -6%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#66aaff"></span> Dal (-6 tot -2%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#22cc55"></span> Vlak (-2 tot 2%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#ffcc00"></span> Lichte klim (2–5%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#ff8800"></span> Klim (5–8%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#ff2200"></span> Steil (&gt; 8%)</div>`);
+  } catch(e) {
+    console.error('Gradient:', e);
+    clearOverlay();
+  }
+  btn.textContent = '⛰ Helling';
+}
+
+// ── Surface overlay ────────────────────────────────────────────────────
+function surfColor(surf) {
+  if (!surf) return '#999';
+  const s = surf.toLowerCase();
+  if (s === 'asphalt' || s === 'paved' || s === 'concrete' || s === 'tarmac') return '#888';
+  if (s === 'compacted' || s === 'fine_gravel') return '#c8a455';
+  if (s.includes('gravel') || s === 'unpaved') return '#b07030';
+  if (s === 'ground' || s === 'dirt' || s === 'earth' || s === 'mud') return '#7a5525';
+  if (s === 'grass' || s === 'sand') return '#6a9a40';
+  if (s === 'sett' || s.includes('cobblestone') || s === 'paving_stones') return '#606060';
+  return '#aaa';
+}
+
+async function toggleSurface() {
+  const btn = document.getElementById('btn-surface');
+  const wasActive = btn.classList.contains('active');
+  clearOverlay();
+  if (wasActive) return;
+
+  if (!routePts.length) return;
+  btn.textContent = '🛣 Laden…';
+
+  try {
+    // Sample ~50 pts along the route
+    const S = Math.max(1, Math.floor(routePts.length / 50));
+    const sampled = routePts.filter((_, i) => i % S === 0);
+
+    const unions = sampled.map(([la,lo]) =>
+      `way["highway"]["surface"](around:80,${la.toFixed(5)},${lo.toFixed(5)});`
+    ).join('\n');
+    const oq = `[out:json][timeout:60];\n(\n${unions}\n);\nout body geom;`;
+
+    const r = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST', body: 'data=' + encodeURIComponent(oq)
+    });
+    if (!r.ok) throw new Error('Overpass ' + r.status);
+    const data = await r.json();
+    const ways = data.elements || [];
+
+    // For each sampled segment, find nearest OSM way and use its surface
+    function nearestSurf(lat, lon) {
+      let best = Infinity, surf = null;
+      for (const w of ways) {
+        if (!w.geometry) continue;
+        for (const nd of w.geometry) {
+          const d = (lat - nd.lat)**2 + (lon - nd.lon)**2;
+          if (d < best) { best = d; surf = w.tags?.surface; }
+        }
+      }
+      return surf || null;
+    }
+
+    const lg = L.layerGroup();
+    for (let i = 0; i < sampled.length - 1; i++) {
+      const [la1,lo1] = sampled[i], [la2,lo2] = sampled[i+1];
+      const midLat = (la1+la2)/2, midLon = (lo1+lo2)/2;
+      const surf = nearestSurf(midLat, midLon);
+      L.polyline([[la1,lo1],[la2,lo2]], {
+        color: surfColor(surf), weight: 4, opacity: .9
+      }).bindTooltip(surf || 'onbekend').addTo(lg);
+    }
+    surfaceLayer = lg;
+    lg.addTo(map);
+    if (routeLayer) routeLayer.setStyle({ opacity: 0 });
+    btn.classList.add('active');
+    showLegend(`
+      <div class="leg-row"><span class="leg-swatch" style="background:#888"></span> Asfalt / verhard</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#c8a455"></span> Compacted / fijn gravel</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#b07030"></span> Gravel / onverhard</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#7a5525"></span> Grond / aarde</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#6a9a40"></span> Gras / zand</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#606060"></span> Kassei / stenen</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#999"></span> Onbekend</div>`);
+  } catch(e) {
+    console.error('Surface:', e);
+    clearOverlay();
+  }
+  btn.textContent = '🛣 Ondergrond';
+}
 
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';

@@ -116,7 +116,7 @@
         <div>
           <label>Categorie</label>
           <div id="chips">
-            <span class="chip" data-q='node["amenity"~"drinking_water|water_point|fountain"]|node["natural"="spring"]["drinking_water"!="no"]' data-cat="Water">💧 Water</span>
+            <span class="chip" data-q='node["amenity"~"drinking_water|water_point|fountain"]§node["natural"="spring"]["drinking_water"!="no"]' data-cat="Water">💧 Water</span>
             <span class="chip" data-q='node["amenity"~"restaurant|fast_food"]' data-cat="Eten">🍽 Eten</span>
             <span class="chip mcd" data-q='node["name"~"McDonald|McDonalds|McDo",i]' data-cat="McDonald\'s">🍔 McD</span>
             <span class="chip" data-q='node["shop"~"supermarket|convenience"]' data-cat="Supermarkt">🛒 Super</span>
@@ -124,7 +124,7 @@
             <span class="chip" data-q='node["amenity"~"cafe|pub|bar"]' data-cat="Café">☕ Café/Bar</span>
             <span class="chip" data-q='node["tourism"~"camp_site|caravan_site"]' data-cat="Camping">⛺ Camping</span>
             <span class="chip" data-q='node["tourism"~"hotel|hostel|guest_house|chalet"]' data-cat="Hotel">🛏 Hotel</span>
-            <span class="chip" data-q='node["shop"="bicycle"]|node["amenity"="bicycle_repair_station"]' data-cat="Fiets">🚲 Fiets</span>
+            <span class="chip" data-q='node["shop"="bicycle"]§node["amenity"="bicycle_repair_station"]' data-cat="Fiets">🚲 Fiets</span>
             <span class="chip" data-q='node["amenity"="pharmacy"]' data-cat="Apotheek">💊 Apotheek</span>
             <span class="chip" data-q='node["amenity"="atm"]' data-cat="ATM">🏧 ATM</span>
             <span class="chip" data-q='node["amenity"="toilets"]' data-cat="Toiletten">🚻 Toiletten</span>
@@ -333,7 +333,7 @@ async function doSearch() {
 
   // Build Overpass query — circle around rider position
   const radiusM = radiusKm * 1000;
-  const filters = query.split('|');
+  const filters = query.split('§');
   const unions  = filters.map(f => `  ${f}(around:${radiusM},${rd.latitude},${rd.longitude});`).join('\n');
   const oq = `[out:json][timeout:30];\n(\n${unions}\n);\nout body;`;
 
