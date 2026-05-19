@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Start",
+    "from": 0,
+    "to": 268,
+    "fixed": true
+  },
+  {
+    "name": "CP1",
+    "from": 269,
+    "to": 571,
+    "fixed": true
+  },
+  {
+    "name": "CP2",
+    "from": 572,
+    "to": 993,
+    "fixed": true
+  },
+  {
+    "name": "CP3",
+    "from": 994,
+    "to": 1181,
+    "fixed": true
+  },
+  {
+    "name": "CP4",
+    "from": 1182,
+    "to": 1383,
+    "fixed": true
+  }
+]
