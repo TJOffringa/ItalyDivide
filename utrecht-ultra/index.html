@@ -251,17 +251,25 @@ function hav([la1,lo1],[la2,lo2]) {
 }
 
 // ── Route + Checkpoints ────────────────────────────────────────────────
+function routeSetStyle(opts) { if (routeLayer) routeLayer.forEach(l => l.setStyle(opts)); }
+
 async function loadRoute() {
   try {
-    const r = await fetch('route.json');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const pts = await r.json();
-    routePts = pts;
+    const [rr, sr] = await Promise.all([fetch('route.json'), fetch('route-segments.json')]);
+    if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
+    routePts = await rr.json();
     routeCum = [0];
     for (let i = 1; i < routePts.length; i++)
       routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
-    if (routeLayer) routeLayer.remove();
-    routeLayer = L.polyline(routePts, { color: '#00c4d4', weight: 2, opacity: .6 }).addTo(map);
+    if (routeLayer) routeLayer.forEach(l => l.remove());
+    const segs = sr.ok ? await sr.json() : null;
+    if (segs && segs.length > 1) {
+      routeLayer = segs.map(s =>
+        L.polyline(routePts.slice(s.from, s.to + 1), { color: '#00c4d4', weight: 2, opacity: .6 }).addTo(map)
+      );
+    } else {
+      routeLayer = [L.polyline(routePts, { color: '#00c4d4', weight: 2, opacity: .6 }).addTo(map)];
+    }
   } catch(e) { console.warn('Route load failed:', e.message); }
 
   try {
@@ -436,7 +444,7 @@ function hideLegend() {
 function clearOverlay() {
   if (gradientLayer) { gradientLayer.forEach(l => l.remove()); gradientLayer = null; }
   if (surfaceLayer)  { surfaceLayer.forEach(l => l.remove());  surfaceLayer  = null; }
-  if (routeLayer) routeLayer.setStyle({ opacity: .6 });
+  routeSetStyle({ opacity: .6 });
   document.getElementById('btn-helling').classList.remove('active');
   document.getElementById('btn-surface').classList.remove('active');
   hideLegend();
@@ -461,7 +469,7 @@ async function toggleGradient() {
     const lines = buildGradientLines(gradientPts);
     gradientLayer = lines;
     lines.forEach(l => l.addTo(map));
-    if (routeLayer) routeLayer.setStyle({ opacity: 0 });
+    routeSetStyle({ opacity: 0 });
     btn.classList.add('active');
     showLegend(`
       <div class="leg-row"><span class="leg-swatch" style="background:#1e3a8a"></span> Steil dal (&lt; -8%)</div>
@@ -493,7 +501,7 @@ async function toggleSurface() {
     const lines = buildSurfaceLines(surfacePts);
     surfaceLayer = lines;
     lines.forEach(l => l.addTo(map));
-    if (routeLayer) routeLayer.setStyle({ opacity: 0 });
+    routeSetStyle({ opacity: 0 });
     btn.classList.add('active');
     showLegend(`
       <div class="leg-row"><span class="leg-swatch" style="background:#4ade80"></span> Verhard (asfalt/beton)</div>
