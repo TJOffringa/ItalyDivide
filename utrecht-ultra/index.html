@@ -154,6 +154,40 @@
     .leg-row { display: flex; align-items: center; gap: 5px; }
     .leg-swatch { width: 16px; height: 4px; border-radius: 2px; flex-shrink: 0; }
 
+    /* ── Route Ranking Panel ── */
+    #route-rank-panel {
+      position: absolute; top: 10px; left: 10px; z-index: 800;
+      background: rgba(10,15,30,.96); border: 1px solid var(--border);
+      border-radius: 10px; width: 260px; max-height: calc(100% - 20px);
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,.6);
+    }
+    #rrp-header { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #rrp-km { font-size: 11px; color: var(--teal); font-weight: 700; margin-bottom: 6px; }
+    #rrp-filters { display: flex; gap: 4px; align-items: center; }
+    .rrp-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 5px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      transition: color .1s, background .1s, border-color .1s;
+    }
+    .rrp-btn.active { background: var(--teal); color: #0a0f1e; border-color: var(--teal); font-weight: 700; }
+    #rrp-close { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 2px; line-height: 1; }
+    #rrp-close:hover { color: var(--text); }
+    #rrp-list { flex: 1; overflow-y: auto; }
+    .rrp-row {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 12px; border-bottom: 1px solid rgba(30,45,74,.5); font-size: 12px;
+    }
+    .rrp-rank { font-size: 10px; color: var(--muted); width: 18px; text-align: right; flex-shrink: 0; }
+    .rrp-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .rrp-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rrp-time { font-size: 10px; color: var(--teal); flex-shrink: 0; font-weight: 600; }
+    .rrp-empty { padding: 20px 12px; font-size: 12px; color: var(--muted); text-align: center; }
+    @media (max-width: 640px) {
+      #route-rank-panel { top: auto; bottom: 40px; left: 4px; right: 4px; width: auto; max-height: 50vh; }
+    }
+    .map-crosshair { cursor: crosshair !important; }
+
     /* ── Popups ── */
     .leaflet-popup-content-wrapper { background: #111827; border: 1px solid #1e2d4a; border-radius: 8px; color: #e8eaf0; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
     .leaflet-popup-tip { background: #111827; }
@@ -192,6 +226,7 @@
       <div id="controls">
         <a class="ctrl-btn" href="rider.html" title="Zoek faciliteiten langs de route">🔍 Langs route</a>
         <a class="ctrl-btn disabled" title="Race Flow: geen historische data beschikbaar voor deze race">📊 Race Flow</a>
+        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor geschatte doortijden">📍 Routeranglijst</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
       </div>
@@ -204,6 +239,18 @@
     </div>
 
     <div id="map">
+      <div id="route-rank-panel" style="display:none">
+        <div id="rrp-header">
+          <div id="rrp-km">Klik op de route om een punt te kiezen</div>
+          <div id="rrp-filters">
+            <button class="rrp-btn active" id="rrpf-all"   onclick="setRRFilter('all')">Alles</button>
+            <button class="rrp-btn"        id="rrpf-top10" onclick="setRRFilter('top10')">Top 10</button>
+            <button class="rrp-btn"        id="rrpf-top25" onclick="setRRFilter('top25')">Top 25</button>
+            <button id="rrp-close" onclick="closeRouteRanking()">✕</button>
+          </div>
+        </div>
+        <div id="rrp-list"><div class="rrp-empty">Klik op een punt op de route</div></div>
+      </div>
       <div id="refresh-bar">↺ —</div>
       <div id="overlay-legend"></div>
     </div>
@@ -239,6 +286,16 @@ function initMap() {
   }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   map.on('zoomend', updateLabelVisibility);
+  map.on('click', function(e) {
+    if (!routeRankingMode || !routePts.length) return;
+    const nearest = nearestRoutePt(e.latlng.lat, e.latlng.lng);
+    if (nearest.dist > 10) return;
+    if (selectedRouteMarker) selectedRouteMarker.remove();
+    selectedRouteMarker = L.circleMarker(routePts[nearest.idx], {
+      radius: 9, color: '#ffbc00', fillColor: '#ffbc00', fillOpacity: 1, weight: 2, pane: 'markerPane'
+    }).addTo(map);
+    showRouteRanking(nearest.km);
+  });
   document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
   setTimeout(() => map.invalidateSize(), 250);
 }
@@ -452,6 +509,86 @@ function clearOverlay() {
 
 let gradientPts = null;
 let surfacePts  = null;
+
+// ── Route Ranking ──────────────────────────────────────────────────────
+const RACE_START = new Date('2026-05-23T16:00:00Z');
+
+let routeRankingMode    = false;
+let routeRankingFilter  = 'all';
+let selectedRouteMarker = null;
+let lastClickedKm       = null;
+
+function toggleRouteRanking() {
+  routeRankingMode = !routeRankingMode;
+  document.getElementById('btn-route-rank').classList.toggle('active', routeRankingMode);
+  if (routeRankingMode) {
+    document.getElementById('route-rank-panel').style.display = 'flex';
+    map.getContainer().classList.add('map-crosshair');
+  } else {
+    closeRouteRanking();
+  }
+}
+
+function closeRouteRanking() {
+  routeRankingMode = false;
+  document.getElementById('btn-route-rank').classList.remove('active');
+  document.getElementById('route-rank-panel').style.display = 'none';
+  map.getContainer().classList.remove('map-crosshair');
+  if (selectedRouteMarker) { selectedRouteMarker.remove(); selectedRouteMarker = null; }
+  lastClickedKm = null;
+}
+
+function setRRFilter(f) {
+  routeRankingFilter = f;
+  ['all','top10','top25'].forEach(id =>
+    document.getElementById('rrpf-' + id).classList.toggle('active', id === f)
+  );
+  if (lastClickedKm !== null) showRouteRanking(lastClickedKm);
+}
+
+function nearestRoutePt(lat, lon) {
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i = 0; i < routePts.length; i++) {
+    const d = hav([lat, lon], routePts[i]);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+  return { idx: bestIdx, km: routeCum[bestIdx], dist: bestDist };
+}
+
+function showRouteRanking(clickedKm) {
+  lastClickedKm = clickedKm;
+  const elapsed = Date.now() - RACE_START.getTime(); // ms
+
+  const passed = riders
+    .filter(r => !r.scratched && (r.distanceOnTrack || 0) >= clickedKm && r.distanceOnTrack > 0)
+    .map(r => {
+      const estMs   = (clickedKm / r.distanceOnTrack) * elapsed;
+      const estTime = new Date(RACE_START.getTime() + estMs);
+      return { ...r, estMs, estTime };
+    })
+    .sort((a, b) => a.estMs - b.estMs);
+
+  const limit = routeRankingFilter === 'top10' ? 10
+              : routeRankingFilter === 'top25' ? 25
+              : Infinity;
+  const shown = passed.slice(0, limit);
+
+  document.getElementById('rrp-km').textContent =
+    `Km ${clickedKm.toFixed(1)} · ${passed.length} rijder${passed.length !== 1 ? 's' : ''} gepasseerd`;
+
+  const el = document.getElementById('rrp-list');
+  if (shown.length === 0) {
+    el.innerHTML = '<div class="rrp-empty">Nog geen rijders gepasseerd op dit punt</div>';
+    return;
+  }
+  el.innerHTML = shown.map((r, i) => `
+    <div class="rrp-row">
+      <span class="rrp-rank">${i + 1}</span>
+      <span class="rrp-dot" style="background:${r.riderColor || '#888'}"></span>
+      <span class="rrp-name">${r.name}</span>
+      <span class="rrp-time">~${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
+    </div>`).join('');
+}
 
 async function toggleGradient() {
   const btn = document.getElementById('btn-helling');
