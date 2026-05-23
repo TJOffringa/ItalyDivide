@@ -188,6 +188,82 @@
     }
     .map-crosshair { cursor: crosshair !important; }
 
+    /* ── POI search panel ── */
+    #poi-section { border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #poi-toggle {
+      width: 100%; padding: 8px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer;
+      font-size: 11px; color: var(--muted); font-family: inherit;
+    }
+    #poi-toggle:hover { color: var(--text); }
+    #poi-body { display: none; padding: 8px 12px 10px; }
+    #poi-body.open { display: block; }
+    #poi-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+    #poi-input {
+      flex: 1 1 100%; padding: 7px 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 12px; font-family: inherit;
+    }
+    #poi-input::placeholder { color: var(--muted); }
+    #poi-input:focus { outline: none; border-color: var(--teal); }
+    #poi-dist {
+      flex: 1; padding: 7px 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--muted); font-size: 12px; cursor: pointer;
+    }
+    #poi-btn {
+      flex: 2; padding: 7px 12px;
+      background: var(--teal); border: none; border-radius: 6px;
+      color: #0a0f1e; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    #poi-status { font-size: 10px; color: var(--muted); margin-bottom: 4px; min-height: 14px; }
+    #poi-layers { display: flex; flex-direction: column; gap: 3px; }
+    .poi-layer {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; padding: 4px 6px;
+      background: var(--surface2); border-radius: 4px; border: 1px solid var(--border);
+    }
+    .poi-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .poi-lbl  { flex: 1; color: var(--text); }
+    .poi-cnt  { font-size: 10px; color: var(--muted); }
+    .poi-vis, .poi-rm { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 12px; padding: 0 2px; }
+    .poi-vis:hover, .poi-rm:hover { color: var(--text); }
+
+    /* ── Race Flow modal ── */
+    #raceflow-modal {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center;
+    }
+    #raceflow-inner {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      width: min(95vw, 760px); max-height: 90vh; display: flex; flex-direction: column;
+      overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.7);
+    }
+    #raceflow-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      font-size: 13px; font-weight: 700;
+    }
+    #raceflow-hdr select {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
+    }
+    #raceflow-close {
+      background: none; border: none; color: var(--muted); font-size: 18px;
+      cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    #raceflow-close:hover { color: var(--text); }
+    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; }
+    #raceflow-legend {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding: 8px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+      font-size: 10px;
+    }
+    .rf-leg-item { display: flex; align-items: center; gap: 4px; }
+    .rf-leg-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    #raceflow-status { padding: 8px 16px; font-size: 12px; color: var(--muted); text-align: center; }
+
     /* ── Popups ── */
     .leaflet-popup-content-wrapper { background: #111827; border: 1px solid #1e2d4a; border-radius: 8px; color: #e8eaf0; box-shadow: 0 4px 20px rgba(0,0,0,.5); }
     .leaflet-popup-tip { background: #111827; }
@@ -224,11 +300,32 @@
       </div>
 
       <div id="controls">
-        <a class="ctrl-btn" href="rider.html" title="Zoek faciliteiten langs de route">🔍 Langs route</a>
-        <a class="ctrl-btn disabled" title="Race Flow: geen historische data beschikbaar voor deze race">📊 Race Flow</a>
-        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor geschatte doortijden">📍 Routeranglijst</button>
+        <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
+        <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
+        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
+      </div>
+
+      <!-- POI search -->
+      <div id="poi-section">
+        <button id="poi-toggle" onclick="togglePoiPanel()">
+          <span>📍 Zoek langs route</span><span id="poi-arrow">▸</span>
+        </button>
+        <div id="poi-body">
+          <div id="poi-row">
+            <input id="poi-input" placeholder="hotel, apotheek, mcdonalds…" type="text">
+            <select id="poi-dist">
+              <option value="1">1 km</option>
+              <option value="2" selected>2 km</option>
+              <option value="5">5 km</option>
+              <option value="10">10 km</option>
+            </select>
+            <button id="poi-btn" onclick="searchPoi()">Zoek</button>
+          </div>
+          <div id="poi-status"></div>
+          <div id="poi-layers"></div>
+        </div>
       </div>
 
       <div id="search-wrap">
@@ -254,6 +351,26 @@
       <div id="refresh-bar">↺ —</div>
       <div id="overlay-legend"></div>
     </div>
+  </div>
+</div>
+
+<!-- Race Flow modal -->
+<div id="raceflow-modal" style="display:none" onclick="if(event.target===this)closeRaceFlow()">
+  <div id="raceflow-inner">
+    <div id="raceflow-hdr">
+      <span>📊 Race Flow — Positie vs. Tijd</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="rf-count" onchange="loadRaceFlow()">
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+          <option value="20">Top 20</option>
+        </select>
+        <button id="raceflow-close" onclick="closeRaceFlow()">✕</button>
+      </div>
+    </div>
+    <canvas id="raceflow-canvas" height="380"></canvas>
+    <div id="raceflow-legend"></div>
+    <div id="raceflow-status"></div>
   </div>
 </div>
 
@@ -510,20 +627,271 @@ function clearOverlay() {
 let gradientPts = null;
 let surfacePts  = null;
 
+// ── Rider Tracks ───────────────────────────────────────────────────────
+const riderTracks = {}; // deviceId → { line, hourMarkers, stopMarkers }
+
+function durStr(ms) {
+  if (!ms || ms < 60000) return '—';
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
+  return h > 0 ? `${h}u ${String(m % 60).padStart(2,'0')}m` : `${m}m`;
+}
+
+function drawHourMarkers(pts) {
+  const markers = [], timed = pts.filter(p => p[2]);
+  if (timed.length < 2) return markers;
+  const t0 = timed[0][2], t1 = timed[timed.length-1][2];
+  for (let t = Math.ceil(t0/3600000)*3600000; t <= t1; t += 3600000) {
+    let best = null, bestDiff = Infinity;
+    for (const p of timed) {
+      const d = Math.abs(p[2] - t);
+      if (d < bestDiff) { bestDiff = d; best = p; }
+    }
+    if (!best || bestDiff > 35*60000) continue;
+    const label = new Date(t).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+    const icon = L.divIcon({ className: 'poi-icon',
+      html: `<div style="background:rgba(10,15,30,.9);border:1.5px solid #4ade80;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:700;color:#4ade80;white-space:nowrap;line-height:15px;box-shadow:0 1px 4px rgba(0,0,0,.6)">${label}</div>`,
+      iconAnchor: [0, 8], iconSize: null });
+    markers.push(L.marker([best[0], best[1]], { icon, interactive: false }).addTo(map));
+  }
+  return markers;
+}
+
+function extractStopsFromTrack(pts) {
+  const stops = [], timed = pts.filter(p => p[2]);
+  for (let i = 0; i < timed.length - 1; i++) {
+    const gap = timed[i+1][2] - timed[i][2];
+    if (gap > 10*60000)
+      stops.push({ lat: timed[i][0], lon: timed[i][1], startMs: timed[i][2], durationMs: gap });
+  }
+  return stops;
+}
+
+function drawStopMarkers(stops) {
+  return stops.map(s => {
+    const dur  = durStr(s.durationMs);
+    const time = new Date(s.startMs).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+    const icon = L.divIcon({ className: 'poi-icon',
+      html: `<div style="background:rgba(10,15,30,.96);border:2px solid #f0a500;border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;color:#f0a500;white-space:nowrap;line-height:16px;box-shadow:0 2px 6px rgba(0,0,0,.8)">${dur}<br><span style="font-weight:400;font-size:10px;opacity:.9">${time}</span></div>`,
+      iconAnchor: [0, 8], iconSize: null });
+    return L.marker([s.lat, s.lon], { icon, interactive: false }).addTo(map);
+  });
+}
+
+async function toggleTrack(id) {
+  if (riderTracks[id]) {
+    riderTracks[id].line.remove();
+    riderTracks[id].hourMarkers.forEach(m => m.remove());
+    riderTracks[id].stopMarkers.forEach(m => m.remove());
+    delete riderTracks[id];
+  } else {
+    try {
+      const res = await fetch(`${API}/api/fmc/${RC}/track/${id}`);
+      const pts = await res.json(); // [[lat,lon,ts], ...]
+      if (pts.length > 1) {
+        const line = L.polyline(pts.map(p => [p[0], p[1]]), {
+          color: '#4ade80', weight: 3, opacity: .85, lineJoin: 'round', lineCap: 'round'
+        }).addTo(map);
+        const hourMarkers = drawHourMarkers(pts);
+        const stopMarkers = drawStopMarkers(extractStopsFromTrack(pts));
+        riderTracks[id] = { line, hourMarkers, stopMarkers };
+        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
+      }
+    } catch(e) { console.error('Track error:', e); }
+  }
+  // Refresh popup to update button state
+  const rd = riders.find(r => String(r.deviceId) === id);
+  if (rd && markerMap[rd.deviceId]) markerMap[rd.deviceId].setPopupContent(popupHtml(rd));
+}
+
+// ── POI Search ─────────────────────────────────────────────────────────
+const POI_COLORS = ['#f59e0b','#38bdf8','#a78bfa','#fb7185','#34d399','#f97316','#e879f9','#facc15'];
+const poiLayers  = {};
+let   poiColorIdx = 0;
+
+function togglePoi() {
+  const body = document.getElementById('poi-body');
+  const open = body.classList.toggle('open');
+  document.getElementById('poi-arrow').textContent = open ? '▾' : '▸';
+  document.getElementById('btn-poi').classList.toggle('active', open);
+  if (open) document.getElementById('poi-section').style.display = '';
+}
+
+function togglePoiPanel() { togglePoi(); }
+
+async function searchPoi() {
+  const q       = document.getElementById('poi-input').value.trim();
+  const maxdist = document.getElementById('poi-dist').value;
+  const status  = document.getElementById('poi-status');
+  if (!q) return;
+  const key = `${q}|${maxdist}km`;
+  if (poiLayers[key]) { status.textContent = 'Al geladen — zie laag hieronder.'; return; }
+  status.textContent = '⏳ Zoeken…';
+  document.getElementById('poi-btn').disabled = true;
+  try {
+    const res = await fetch(`${API}/api/fmc/${RC}/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const pts  = data.results ?? data;
+    const errs = data.errors ?? [];
+    if (!pts.length && !errs.length) { status.textContent = `Niets gevonden voor "${q}".`; return; }
+    if (pts.length) {
+      const color = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
+      const icon  = L.divIcon({
+        className: 'poi-icon',
+        html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.6)"></div>`,
+        iconSize: [16,16], iconAnchor: [8,8], popupAnchor: [0,-10]
+      });
+      const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
+        .addTo(map)
+        .bindPopup(`<b style="color:${color}">${p.name}</b>${p.address ? '<br><small>'+p.address+'</small>' : ''}`));
+      poiLayers[key] = { markers, visible: true, color, label: q, count: pts.length };
+      renderPoiLayers();
+    }
+    status.textContent = pts.length
+      ? `✓ ${pts.length} resultaten${errs.length ? ` (⚠ ${errs.length} zones mislukt)` : ''}`
+      : `⚠ Alle zones mislukt — probeer opnieuw`;
+  } catch(e) {
+    status.textContent = `Fout: ${e.message}`;
+  } finally {
+    document.getElementById('poi-btn').disabled = false;
+  }
+}
+
+function renderPoiLayers() {
+  document.getElementById('poi-layers').innerHTML = Object.entries(poiLayers).map(([key, l]) => `
+    <div class="poi-layer">
+      <div class="poi-dot" style="background:${l.color};opacity:${l.visible?1:.35}"></div>
+      <span class="poi-lbl">${l.label}</span>
+      <span class="poi-cnt">${l.count}</span>
+      <button class="poi-vis" onclick="togglePoiLayer('${key}')">${l.visible?'👁':'○'}</button>
+      <button class="poi-rm"  onclick="removePoiLayer('${key}')">✕</button>
+    </div>`).join('');
+}
+
+function togglePoiLayer(key) {
+  const l = poiLayers[key]; if (!l) return;
+  l.visible = !l.visible;
+  l.markers.forEach(m => l.visible ? m.addTo(map) : m.remove());
+  renderPoiLayers();
+}
+
+function removePoiLayer(key) {
+  const l = poiLayers[key]; if (!l) return;
+  l.markers.forEach(m => m.remove());
+  delete poiLayers[key];
+  renderPoiLayers();
+}
+
+// ── Race Flow ──────────────────────────────────────────────────────────
+function openRaceFlow() {
+  document.getElementById('raceflow-modal').style.display = 'flex';
+  loadRaceFlow();
+}
+function closeRaceFlow() { document.getElementById('raceflow-modal').style.display = 'none'; }
+
+async function loadRaceFlow() {
+  const count  = document.getElementById('rf-count').value;
+  const status = document.getElementById('raceflow-status');
+  const legend = document.getElementById('raceflow-legend');
+  status.textContent = '⏳ Laden…'; legend.innerHTML = '';
+  try {
+    const res = await fetch(`${API}/api/fmc/${RC}/raceflow?count=${count}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.riders?.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
+    status.textContent = '';
+    drawRaceFlowChart(data);
+    legend.innerHTML = data.riders.map(r =>
+      `<div class="rf-leg-item"><div class="rf-leg-dot" style="background:${r.color}"></div><span style="color:#e8eaf0">${r.name}</span></div>`
+    ).join('');
+  } catch(e) {
+    status.textContent = `Fout: ${e.message}`;
+  }
+}
+
+function drawRaceFlowChart({ riders, totalKm, raceStart }) {
+  const canvas = document.getElementById('raceflow-canvas');
+  const W = canvas.offsetWidth || 700;
+  canvas.width  = W;
+  canvas.height = 380;
+  const ctx = canvas.getContext('2d');
+  const pad = { top: 20, right: 20, bottom: 45, left: 55 };
+  const cW  = W - pad.left - pad.right;
+  const cH  = canvas.height - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, canvas.height);
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(0, 0, W, canvas.height);
+
+  // Determine time range
+  const now      = Date.now();
+  const startMs  = raceStart || RACE_START.getTime();
+  const elapsedH = (now - startMs) / 3600000;
+  const maxKm    = totalKm || Math.max(1, ...riders.flatMap(r => r.pts.map(p => p[1])));
+
+  const xS = t  => pad.left + ((t - startMs) / 3600000) / elapsedH * cW;
+  const yS = km => pad.top  + (1 - km / maxKm) * cH;
+
+  // Grid
+  ctx.strokeStyle = '#1e2d4a'; ctx.lineWidth = 1;
+  const hStep = elapsedH > 12 ? 4 : elapsedH > 6 ? 2 : 1;
+  for (let h = 0; h <= elapsedH; h += hStep) {
+    const x = xS(startMs + h * 3600000);
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + cH); ctx.stroke();
+    ctx.fillStyle = '#6b7a99'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`+${h}u`, x, pad.top + cH + 14);
+  }
+  const kmStep = maxKm > 400 ? 100 : maxKm > 200 ? 50 : 25;
+  for (let km = 0; km <= maxKm; km += kmStep) {
+    const y = yS(km);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    ctx.fillStyle = '#6b7a99'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(`${km} km`, pad.left - 6, y + 4);
+  }
+
+  // Axes
+  ctx.strokeStyle = '#374151'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + cH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top + cH); ctx.lineTo(pad.left + cW, pad.top + cH); ctx.stroke();
+
+  // Rider lines
+  for (const r of riders) {
+    if (r.pts.length < 2) continue;
+    ctx.strokeStyle = r.color || '#888';
+    ctx.lineWidth   = 2.5;
+    ctx.lineJoin    = 'round';
+    ctx.beginPath();
+    let started = false;
+    for (const [t, km] of r.pts) {
+      if (t < startMs) continue;
+      const x = xS(t), y = yS(km);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
 // ── Route Ranking ──────────────────────────────────────────────────────
 const RACE_START = new Date('2026-05-23T16:00:00Z');
 
+let riderHistoryCache   = null; // { deviceId: [[km, ts], ...] } — loaded on first ranking click
 let routeRankingMode    = false;
 let routeRankingFilter  = 'all';
 let selectedRouteMarker = null;
 let lastClickedKm       = null;
 
-function toggleRouteRanking() {
+async function toggleRouteRanking() {
   routeRankingMode = !routeRankingMode;
   document.getElementById('btn-route-rank').classList.toggle('active', routeRankingMode);
   if (routeRankingMode) {
     document.getElementById('route-rank-panel').style.display = 'flex';
     map.getContainer().classList.add('map-crosshair');
+    if (!riderHistoryCache) {
+      try {
+        const r = await fetch(`${API}/api/fmc/${RC}/history`);
+        if (r.ok) riderHistoryCache = await r.json();
+      } catch(e) { console.warn('History load failed:', e.message); }
+    }
   } else {
     closeRouteRanking();
   }
@@ -557,14 +925,34 @@ function nearestRoutePt(lat, lon) {
 
 function showRouteRanking(clickedKm) {
   lastClickedKm = clickedKm;
-  const elapsed = Date.now() - RACE_START.getTime(); // ms
+  const elapsed = Date.now() - RACE_START.getTime();
 
   const passed = riders
     .filter(r => !r.scratched && (r.distanceOnTrack || 0) >= clickedKm && r.distanceOnTrack > 0)
     .map(r => {
-      const estMs   = (clickedKm / r.distanceOnTrack) * elapsed;
+      const id        = String(r.deviceId);
+      const rHist     = riderHistoryCache?.[id]; // [[km, ts], ...]
+      let estMs, isActual = false;
+
+      if (rHist && rHist.length >= 1) {
+        for (let i = 0; i < rHist.length; i++) {
+          if (rHist[i][0] >= clickedKm) {
+            if (i === 0) {
+              estMs = rHist[0][1] - RACE_START.getTime();
+            } else {
+              const [km0, t0] = rHist[i - 1], [km1, t1] = rHist[i];
+              const frac = km1 > km0 ? (clickedKm - km0) / (km1 - km0) : 0;
+              estMs = (t0 + frac * (t1 - t0)) - RACE_START.getTime();
+            }
+            isActual = true;
+            break;
+          }
+        }
+      }
+      if (!isActual) estMs = (clickedKm / r.distanceOnTrack) * elapsed;
+
       const estTime = new Date(RACE_START.getTime() + estMs);
-      return { ...r, estMs, estTime };
+      return { ...r, estMs, estTime, isActual };
     })
     .sort((a, b) => a.estMs - b.estMs);
 
@@ -572,9 +960,10 @@ function showRouteRanking(clickedKm) {
               : routeRankingFilter === 'top25' ? 25
               : Infinity;
   const shown = passed.slice(0, limit);
+  const hasActual = shown.some(r => r.isActual);
 
   document.getElementById('rrp-km').textContent =
-    `Km ${clickedKm.toFixed(1)} · ${passed.length} rijder${passed.length !== 1 ? 's' : ''} gepasseerd`;
+    `Km ${clickedKm.toFixed(1)} · ${passed.length} rijder${passed.length !== 1 ? 's' : ''} gepasseerd${hasActual ? '' : ' (schatting)'}`;
 
   const el = document.getElementById('rrp-list');
   if (shown.length === 0) {
@@ -586,7 +975,7 @@ function showRouteRanking(clickedKm) {
       <span class="rrp-rank">${i + 1}</span>
       <span class="rrp-dot" style="background:${r.riderColor || '#888'}"></span>
       <span class="rrp-name">${r.name}</span>
-      <span class="rrp-time">~${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
+      <span class="rrp-time" title="${r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
     </div>`).join('');
 }
 
@@ -655,13 +1044,13 @@ function popupHtml(rd) {
   const status   = rd.scratched  ? '<span style="color:#f87171">DNF</span>'
     : finished                   ? '<span style="color:#4ade80">✓ Gefinisht</span>'
                                  : '<span style="color:#4ade80">Rijdend</span>';
+  const id       = String(rd.deviceId);
+  const hasTrack = !!riderTracks[id];
   return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
-    <div class="pu-meta" style="margin-top:6px">
-      <a href="rider.html?id=${rd.deviceId}" style="color:${rd.riderColor};font-size:11px">
-        🔍 Zoek in de buurt van deze rijder
-      </a>
-    </div>`;
+    <button class="pu-track-btn${hasTrack ? ' active' : ''}" style="margin-top:8px;width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:${hasTrack?'#4ade80':'#6b7a99'};font-size:11px;cursor:pointer;font-family:inherit" onclick="toggleTrack('${id}')">
+      ${hasTrack ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
+    </button>`;
 }
 
 // ── Leaderboard ────────────────────────────────────────────────────────
@@ -729,6 +1118,8 @@ function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
   setTimeout(() => map.invalidateSize(), 220);
 }
+
+document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
 
 initMap();
 loadRoute();
