@@ -137,9 +137,10 @@
     }
     .rider-label::before { display: none !important; }
     .rl-inner {
-      font-size: 10px; font-weight: 600; color: #fff;
-      text-shadow: 0 0 3px #000, 0 0 3px #000;
-      white-space: nowrap; pointer-events: none;
+      font-size: 11px; font-weight: 700; color: #fff;
+      background: rgba(0,0,0,.75); padding: 2px 5px;
+      border-radius: 2px; white-space: nowrap; pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,.9);
     }
 
     /* ── Overlay legend ── */
@@ -292,8 +293,9 @@ async function loadPositions() {
     renderMarkers();
     renderList();
     if (!mapCentered) {
-      const first = riders.find(r => !r.scratched && r.latitude && r.longitude);
-      if (first) { map.setView([first.latitude, first.longitude], 11); mapCentered = true; }
+      const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude)
+                           .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
+      if (leader) { map.setView([leader.latitude, leader.longitude], 11); mapCentered = true; }
     }
     const finished  = riders.filter(r => !r.scratched && r.distanceOnTrack >= finishKm - 0.5).length;
     const active    = riders.filter(r => !r.scratched && r.distanceOnTrack  < finishKm - 0.5).length;
@@ -329,7 +331,7 @@ function renderMarkers() {
       }).addTo(map).bindPopup(() => popupHtml(riders.find(r => r.deviceId === rd.deviceId) || rd));
 
       if (!rd.scratched) {
-        m.bindTooltip(`<span class="rl-inner" style="color:${color}">${firstName}</span>`, {
+        m.bindTooltip(`<span class="rl-inner">${firstName}</span>`, {
           permanent: true, direction: 'right', offset: [7, 0],
           className: 'rider-label', opacity: 1
         });
