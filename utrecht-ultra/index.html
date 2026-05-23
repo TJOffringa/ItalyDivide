@@ -159,6 +159,8 @@
     .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
     .pu-name { font-weight: 700; margin-bottom: 4px; }
     .pu-meta { font-size: 11px; color: #6b7a99; }
+    .cp-label { background: rgba(10,15,30,.85) !important; border: none !important; box-shadow: none !important; color: #e8eaf0 !important; font-size: 10px !important; font-weight: 700 !important; white-space: nowrap; }
+    .cp-label::before { display: none !important; }
   </style>
 </head>
 <body>
@@ -219,6 +221,7 @@ let map, routeLayer;
 let markerMap   = {};
 let riders      = [];
 let finishKm    = Infinity;
+let mapCentered = false;
 let sidebarOpen = window.innerWidth > 640;
 let cdSecs = INTERVAL, cdTimer;
 
@@ -229,7 +232,7 @@ let surfaceLayer  = null; // array of Leaflet polylines
 
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([46.05, 14.50], 7);
+  map = L.map('map', { zoomControl: false }).setView([52.09, 5.12], 8);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
   }).addTo(map);
@@ -246,32 +249,34 @@ function hav([la1,lo1],[la2,lo2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ── Route ──────────────────────────────────────────────────────────────
+// ── Route + Checkpoints ────────────────────────────────────────────────
 async function loadRoute() {
   try {
-    const r = await fetch(`${API}/api/fmc/${RC}/route?f=${RF}`);
-    const geojson = await r.json();
-    if (routeLayer) routeLayer.remove();
-    routeLayer = L.geoJSON(geojson, {
-      style: { color: '#00c4d4', weight: 2, opacity: .6 },
-      coordsToLatLng: c => L.latLng(parseFloat(c[1]), parseFloat(c[0]))
-    }).addTo(map);
-
-    // Build routePts for gradient/surface overlays
-    const pts = [];
-    for (const feat of (geojson.features || [])) {
-      const geom = feat.geometry;
-      const lines = geom.type === 'MultiLineString' ? geom.coordinates : [geom.coordinates];
-      for (const line of lines)
-        for (const c of line)
-          pts.push([parseFloat(c[1]), parseFloat(c[0])]);
-    }
-    const step = Math.max(1, Math.floor(pts.length / 2000));
-    routePts = pts.filter((_, i) => i % step === 0);
+    const r = await fetch('route.json');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const pts = await r.json();
+    routePts = pts;
     routeCum = [0];
     for (let i = 1; i < routePts.length; i++)
       routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
+    if (routeLayer) routeLayer.remove();
+    routeLayer = L.polyline(routePts, { color: '#00c4d4', weight: 2, opacity: .6 }).addTo(map);
   } catch(e) { console.warn('Route load failed:', e.message); }
+
+  try {
+    const r = await fetch('checkpoints.json');
+    if (!r.ok) return;
+    const cps = await r.json();
+    cps.forEach(cp => {
+      const isFinish = cp.label === 'Finish' || cp.label === 'FINISH';
+      const isStart  = cp.label === 'Start'  || cp.label === 'START';
+      const color    = isFinish ? '#4ade80' : isStart ? '#f0a500' : '#00c4d4';
+      L.circleMarker([cp.lat, cp.lon], {
+        radius: 7, color, fillColor: color, fillOpacity: 1, weight: 2
+      }).addTo(map).bindTooltip(cp.label, { permanent: true, direction: 'top',
+        className: 'cp-label', offset: [0, -8] });
+    });
+  } catch(e) { console.warn('Checkpoints load failed:', e.message); }
 }
 
 // ── Positions ──────────────────────────────────────────────────────────
@@ -280,11 +285,16 @@ async function loadPositions() {
     const r = await fetch(`${API}/api/fmc/${RC}/positions`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     riders = await r.json();
-    // Detect finish distance: most common max distanceOnTrack among non-scratched
+    // Detect finish distance — only meaningful when riders have actual on-track distance
     const dists = riders.filter(r => !r.scratched).map(r => r.distanceOnTrack || 0);
-    finishKm = dists.length ? Math.max(...dists) : Infinity;
+    const maxDist = dists.length ? Math.max(...dists) : 0;
+    finishKm = maxDist > 0 ? maxDist : Infinity;
     renderMarkers();
     renderList();
+    if (!mapCentered) {
+      const first = riders.find(r => !r.scratched && r.latitude && r.longitude);
+      if (first) { map.setView([first.latitude, first.longitude], 11); mapCentered = true; }
+    }
     const finished  = riders.filter(r => !r.scratched && r.distanceOnTrack >= finishKm - 0.5).length;
     const active    = riders.filter(r => !r.scratched && r.distanceOnTrack  < finishKm - 0.5).length;
     const scratched = riders.filter(r =>  r.scratched).length;
@@ -316,7 +326,7 @@ function renderMarkers() {
       const m = L.circleMarker([rd.latitude, rd.longitude], {
         radius: rd.scratched ? 4 : 6, color, fillColor: color,
         fillOpacity: opacity, opacity, weight: 1.5
-      }).addTo(map).bindPopup(() => popupHtml(rd));
+      }).addTo(map).bindPopup(() => popupHtml(riders.find(r => r.deviceId === rd.deviceId) || rd));
 
       if (!rd.scratched) {
         m.bindTooltip(`<span class="rl-inner" style="color:${color}">${firstName}</span>`, {
@@ -328,7 +338,7 @@ function renderMarkers() {
     }
   }
   for (const id of Object.keys(markerMap)) {
-    if (!seen.has(+id)) { markerMap[id].remove(); delete markerMap[id]; }
+    if (!seen.has(id)) { markerMap[id].remove(); delete markerMap[id]; }
   }
 }
 
