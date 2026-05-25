@@ -457,7 +457,7 @@ async function loadRoute() {
       const geojson = await r.json();
       if (routeLayer) routeLayer.forEach(l => l.remove());
       routeLayer = [L.geoJSON(geojson, {
-        style: { color: '#00c4d4', weight: 2, opacity: .6 },
+        style: { color: '#a855f7', weight: 4, opacity: .85 },
         coordsToLatLng: c => L.latLng(parseFloat(c[1]), parseFloat(c[0]))
       }).addTo(map)];
       const pts = [];
@@ -480,10 +480,10 @@ async function loadRoute() {
       const segs = sr.ok ? await sr.json() : null;
       if (segs && segs.length > 1) {
         routeLayer = segs.map(s =>
-          L.polyline(routePts.slice(s.from, s.to + 1), { color: '#00c4d4', weight: 2, opacity: .6 }).addTo(map)
+          L.polyline(routePts.slice(s.from, s.to + 1), { color: '#a855f7', weight: 4, opacity: .85 }).addTo(map)
         );
       } else {
-        routeLayer = [L.polyline(routePts, { color: '#00c4d4', weight: 2, opacity: .6 }).addTo(map)];
+        routeLayer = [L.polyline(routePts, { color: '#a855f7', weight: 4, opacity: .85 }).addTo(map)];
       }
     }
 
@@ -684,7 +684,7 @@ function hideLegend() { document.getElementById('overlay-legend').style.display 
 function clearOverlay() {
   if (gradientLayer) { gradientLayer.forEach(l => l.remove()); gradientLayer = null; }
   if (surfaceLayer)  { surfaceLayer.forEach(l => l.remove());  surfaceLayer  = null; }
-  routeSetStyle({ opacity: .6 });
+  routeSetStyle({ opacity: .85 });
   document.getElementById('btn-helling').classList.remove('active');
   document.getElementById('btn-surface').classList.remove('active');
   hideLegend();
