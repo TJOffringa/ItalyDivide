@@ -913,7 +913,7 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
 }
 
 // ── Route Ranking ──────────────────────────────────────────────────────
-const RACE_START = new Date('2026-05-23T16:00:00Z');
+let RACE_START = new Date('2026-05-23T16:00:00Z'); // fallback; overridden by /config
 
 let riderHistoryCache   = null; // { deviceId: [[km, ts], ...] } — loaded on first ranking click
 let routeRankingMode    = false;
@@ -1220,6 +1220,11 @@ function toggleSidebar() {
 }
 
 document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
+
+fetch(`${API}/api/fmc/${RC}/config`)
+  .then(r => r.ok ? r.json() : null)
+  .then(cfg => { if (cfg?.start) RACE_START = new Date(cfg.start); })
+  .catch(() => {});
 
 initMap();
 loadRoute();
