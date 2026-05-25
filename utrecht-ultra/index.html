@@ -143,6 +143,23 @@
       text-shadow: 0 1px 2px rgba(0,0,0,.9);
     }
 
+    /* ── Label visibility ── */
+    .labels-hidden .rider-label { display: none !important; }
+
+    /* ── Sidebar section headers ── */
+    .section-hdr {
+      padding: 5px 12px 4px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .section-collapse {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 13px; padding: 0 4px; font-family: inherit;
+    }
+    .section-collapse:hover { color: var(--text); }
+
     /* ── Overlay legend ── */
     #overlay-legend {
       display: none;
@@ -303,6 +320,7 @@
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
+        <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
       </div>
@@ -474,6 +492,12 @@ async function loadPositions() {
     finishKm = maxDist > 0 ? maxDist : Infinity;
     renderMarkers();
     renderList();
+    if (!riderHistoryCache) {
+      fetch(`${API}/api/fmc/${RC}/history`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) { riderHistoryCache = data; renderList(); } })
+        .catch(() => {});
+    }
     if (!mapCentered) {
       const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude)
                            .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
@@ -526,7 +550,23 @@ function renderMarkers() {
   }
 }
 
-function updateLabelVisibility() {}
+function updateLabelVisibility() {
+  const anyTrackActive = Object.keys(riderTracks).length > 0;
+  const show = labelsVisible && !anyTrackActive;
+  if (map) map.getContainer().classList.toggle('labels-hidden', !show);
+  const btn = document.getElementById('btn-labels');
+  if (btn) btn.classList.toggle('active', labelsVisible);
+}
+
+function toggleLabels() {
+  labelsVisible = !labelsVisible;
+  updateLabelVisibility();
+}
+
+function toggleFinishers() {
+  finishersCollapsed = !finishersCollapsed;
+  renderList();
+}
 
 // ── Gradient overlay (static pre-generated JSON) ───────────────────────
 const GRADIENT_STEP = 4;
@@ -698,6 +738,7 @@ async function toggleTrack(id) {
       }
     } catch(e) { console.error('Track error:', e); }
   }
+  updateLabelVisibility();
   // Refresh popup to update button state
   const rd = riders.find(r => String(r.deviceId) === id);
   if (rd && markerMap[rd.deviceId]) markerMap[rd.deviceId].setPopupContent(popupHtml(rd));
@@ -879,6 +920,8 @@ let routeRankingMode    = false;
 let routeRankingFilter  = 'all';
 let selectedRouteMarker = null;
 let lastClickedKm       = null;
+let labelsVisible       = true;
+let finishersCollapsed  = false;
 
 async function toggleRouteRanking() {
   routeRankingMode = !routeRankingMode;
@@ -1063,40 +1106,97 @@ function filterList() {
 function renderList() {
   const sorted   = [...riders].sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0));
   const filtered = filterText ? sorted.filter(r => r.name.toLowerCase().includes(filterText)) : sorted;
-  const el = document.getElementById('rider-list');
-  el.innerHTML = '';
+  const el       = document.getElementById('rider-list');
+  el.innerHTML   = '';
 
-  let rank = 0;
-  let riderSepAdded = false;
-
-  for (const rd of filtered) {
-    const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
-    if (!rd.scratched) rank++;
-
-    // Separator between finishers and still-racing riders
-    if (!finished && !rd.scratched && !riderSepAdded && !filterText) {
-      const sep = document.createElement('div');
-      sep.style.cssText = 'padding:4px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);background:var(--surface2);border-bottom:1px solid var(--border)';
-      sep.textContent = 'Nog onderweg';
-      el.appendChild(sep);
-      riderSepAdded = true;
-    }
-
-    const km  = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+  function makeRow(rd, rank, badge, extraClass) {
     const row = document.createElement('div');
-    row.className = 'rider-row' + (rd.scratched ? ' scratched-row' : '');
+    row.className = 'rider-row' + (extraClass ? ' ' + extraClass : '');
     row.innerHTML = `
-      <span class="r-rank">${rd.scratched ? '' : rank}</span>
+      <span class="r-rank">${rank ?? ''}</span>
       <span class="r-dot" style="background:${rd.riderColor || '#888'}"></span>
       <span class="r-name">${rd.name}</span>
-      ${rd.scratched  ? '<span class="r-scratch">DNF</span>'
-      : finished      ? '<span class="r-fin">✓ Fin</span>'
-                      : `<span class="r-km">${km} km</span>`}`;
+      ${badge}`;
     row.addEventListener('click', () => {
       const m = markerMap[rd.deviceId];
       if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
     });
-    el.appendChild(row);
+    return row;
+  }
+
+  if (filterText) {
+    let rank = 0;
+    for (const rd of filtered) {
+      const fin = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
+      if (!rd.scratched) rank++;
+      const km  = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+      const badge = rd.scratched ? '<span class="r-scratch">DNF</span>'
+        : fin ? '<span class="r-fin">✓ Fin</span>'
+               : `<span class="r-km">${km} km</span>`;
+      el.appendChild(makeRow(rd, rd.scratched ? '' : rank, badge, rd.scratched ? 'scratched-row' : ''));
+    }
+    return;
+  }
+
+  const finishers = filtered.filter(r => !r.scratched && (r.distanceOnTrack || 0) >= finishKm - 0.5);
+  const active    = filtered.filter(r => !r.scratched && (r.distanceOnTrack || 0) <  finishKm - 0.5);
+  const dnf       = filtered.filter(r =>  r.scratched);
+
+  // Sort finishers by history timestamp at finish
+  const withTimes = finishers.map(r => {
+    const hist = riderHistoryCache?.[String(r.deviceId)];
+    let finTs = null;
+    if (hist) for (const [km, ts] of hist) { if (km >= finishKm - 0.5) { finTs = ts; break; } }
+    return { r, finTs };
+  }).sort((a, b) => {
+    if (a.finTs && b.finTs) return a.finTs - b.finTs;
+    if (a.finTs) return -1;
+    if (b.finTs) return 1;
+    return (b.r.distanceOnTrack || 0) - (a.r.distanceOnTrack || 0);
+  });
+
+  const firstFinTs = withTimes[0]?.finTs ?? null;
+
+  if (withTimes.length > 0) {
+    const hdr = document.createElement('div');
+    hdr.className = 'section-hdr';
+    hdr.innerHTML = `<span>🏆 Gefinisht (${withTimes.length})</span><button class="section-collapse" onclick="toggleFinishers()">${finishersCollapsed ? '▸' : '▾'}</button>`;
+    el.appendChild(hdr);
+
+    if (!finishersCollapsed) {
+      withTimes.forEach(({ r, finTs }, i) => {
+        let badge;
+        if (finTs) {
+          if (i === 0) {
+            const t = new Date(finTs).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+            badge = `<span class="r-fin">${t}</span>`;
+          } else {
+            badge = `<span class="r-fin" style="color:var(--muted)">+${durStr(finTs - firstFinTs)}</span>`;
+          }
+        } else {
+          badge = `<span class="r-fin">✓ Fin</span>`;
+        }
+        el.appendChild(makeRow(r, i + 1, badge, ''));
+      });
+    }
+  }
+
+  if (active.length > 0) {
+    const hdr = document.createElement('div');
+    hdr.className = 'section-hdr';
+    hdr.innerHTML = `<span>Nog onderweg (${active.length})</span>`;
+    el.appendChild(hdr);
+    const startRank = withTimes.length + 1;
+    active.forEach((rd, i) => {
+      const km = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+      el.appendChild(makeRow(rd, startRank + i, `<span class="r-km">${km} km</span>`, ''));
+    });
+  }
+
+  if (dnf.length > 0) {
+    dnf.forEach(rd => {
+      el.appendChild(makeRow(rd, '', '<span class="r-scratch">DNF</span>', 'scratched-row'));
+    });
   }
 }
 
