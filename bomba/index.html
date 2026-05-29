@@ -174,7 +174,7 @@ async function loadRaces() {
       const finished = diffD >= 14;
       const card     = document.createElement('a');
       card.className = 'race-card' + (finished ? ' finished' : '');
-      card.href      = `/tracker/?race=${race.fmcCode}`;
+      card.href      = `../tracker/?race=${race.fmcCode}`;
       card.innerHTML = `
         <div class="card-accent"></div>
         <div class="card-body">
