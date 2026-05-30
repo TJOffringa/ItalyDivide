@@ -94,6 +94,16 @@
     .ctrl-btn.active { background: var(--teal); color: #0a0f1e; border-color: var(--teal); font-weight: 600; }
     .ctrl-btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
+    /* ── Route tabs ── */
+    #route-tabs { display: none; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 4px; }
+    .tab-btn {
+      font-size: 12px; font-weight: 700; padding: 5px 16px; border-radius: 6px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      transition: color .12s, background .12s, border-color .12s;
+    }
+    .tab-btn:hover { color: var(--text); border-color: var(--muted); }
+    .tab-btn.active { background: var(--teal); color: #0a0f1e; border-color: var(--teal); }
+
     /* ── Search ── */
     #search-wrap { padding: 8px 12px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
     #search { width: 100%; padding: 6px 10px; background: var(--surface2);
@@ -368,6 +378,9 @@
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
       </div>
 
+      <!-- Route tabs (multi-afstand races) -->
+      <div id="route-tabs" style="display:none"></div>
+
       <!-- POI search -->
       <div id="poi-section">
         <button id="poi-toggle" onclick="togglePoiPanel()">
@@ -578,9 +591,16 @@ async function loadPositions() {
   try {
     const r = await fetch(`${API}/api/fmc/${RC}/positions?_=${Date.now()}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    riders = await r.json();
+    allRiders = await r.json();
+    // Tab-filter toepassen indien van toepassing, anders alle riders tonen
+    const tabs = raceConfig?.tabs;
+    if (tabs?.length) {
+      const segs = tabs[activeTab].segments;
+      riders = segs ? allRiders.filter(r => segs.includes(r.segment)) : allRiders;
+    } else {
+      riders = allRiders;
+    }
     // finishKm wordt gezet door loadRoute() op basis van werkelijke routelengte.
-    // Alleen als de route nog niet geladen is, gebruik max-positie als noodoplossing.
     if (finishKm === Infinity) {
       const maxDist = Math.max(0, ...riders.filter(r => !r.scratched).map(r => r.distanceOnTrack || 0));
       if (maxDist > 0) finishKm = maxDist;
@@ -1380,6 +1400,47 @@ function toggleSidebar() {
 
 document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
 
+// ── Route tabs ─────────────────────────────────────────────
+let activeTab = 0;
+let allRiders = []; // unfiltered positions
+
+function initTabs() {
+  const tabs = raceConfig?.tabs;
+  if (!tabs?.length) return;
+  const el = document.getElementById('route-tabs');
+  el.style.display = 'flex';
+  el.innerHTML = tabs.map((t, i) =>
+    `<button class="tab-btn${i===0?' active':''}" onclick="switchTab(${i})">${t.label}</button>`
+  ).join('');
+}
+
+async function switchTab(idx) {
+  if (idx === activeTab && routeLayer) return;
+  activeTab = idx;
+  const tabs = raceConfig.tabs;
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  // Load new route
+  raceConfig.routeFile = tabs[idx].routeFile;
+  if (routeLayer) routeLayer.forEach(l => l.remove());
+  routeLayer = null; routePts = []; routeCum = []; finishKm = Infinity;
+  gradientLayer = null; surfaceLayer = null;
+  await loadRoute();
+  // Filter riders by segment
+  applyTabFilter();
+}
+
+function applyTabFilter() {
+  const tabs = raceConfig?.tabs;
+  if (!tabs?.length || !allRiders.length) return;
+  const segs = tabs[activeTab].segments;
+  riders = segs ? allRiders.filter(r => segs.includes(r.segment)) : allRiders;
+  renderMarkers();
+  updateLabelVisibility();
+  renderList();
+  mapCentered = false; // re-center on new tab's leader
+}
+
 // ── Init ───────────────────────────────────────────────────────────────
 async function init() {
   initMap();
@@ -1398,6 +1459,7 @@ async function init() {
       document.getElementById('race-title').textContent = raceConfig.name;
     }
   } catch(e) { console.warn('Config load failed:', e.message); }
+  initTabs();
   checkResults();
   loadRoute();
   loadPositions().then(startCountdown);
