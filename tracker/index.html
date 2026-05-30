@@ -362,6 +362,7 @@
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
+        <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
@@ -546,6 +547,11 @@ async function loadRoute() {
     for (let i = 1; i < routePts.length; i++)
       routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
     finishKm = routeCum[routeCum.length - 1]; // werkelijke routelengte als finish
+
+    // Fit kaart op de route zodat hij direct zichtbaar is
+    if (routeLayer && routeLayer[0]) {
+      try { map.fitBounds(routeLayer[0].getBounds(), { padding: [30, 30] }); } catch(e) {}
+    }
   } catch(e) { console.warn('Route load failed:', e.message); }
 
   // Checkpoints (only available for Komoot routes)
@@ -588,9 +594,12 @@ async function loadPositions() {
         .catch(() => {});
     }
     if (!mapCentered) {
-      const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude)
+      const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
                            .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
-      if (leader) { map.setView([leader.latitude, leader.longitude], 11); mapCentered = true; }
+      if (leader) {
+        map.setView([leader.latitude, leader.longitude], 11);
+        mapCentered = true;
+      }
     }
     const finished  = riders.filter(r => !r.scratched && r.distanceOnTrack >= finishKm - 0.5).length;
     const active    = riders.filter(r => !r.scratched && r.distanceOnTrack  < finishKm - 0.5).length;
@@ -1351,6 +1360,13 @@ function startCountdown() {
     document.getElementById('refresh-bar').textContent = `↺ ${m}:${String(s).padStart(2,'0')}`;
     if (cdSecs <= 0) { clearInterval(cdTimer); loadPositions().then(startCountdown); }
   }, 1000);
+}
+
+// ── Fly to leader ─────────────────────────────────────────
+function flyToLeader() {
+  const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
+                       .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
+  if (leader) map.setView([leader.latitude, leader.longitude], 12);
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────
