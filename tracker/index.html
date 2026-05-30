@@ -586,6 +586,7 @@ async function loadPositions() {
       if (maxDist > 0) finishKm = maxDist;
     }
     renderMarkers();
+    updateLabelVisibility();
     renderList();
     if (!riderHistoryCache) {
       fetch(`${API}/api/fmc/${RC}/history`)
