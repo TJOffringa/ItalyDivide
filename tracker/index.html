@@ -576,7 +576,7 @@ async function loadRoute() {
 // ── Positions ──────────────────────────────────────────────────────────
 async function loadPositions() {
   try {
-    const r = await fetch(`${API}/api/fmc/${RC}/positions`);
+    const r = await fetch(`${API}/api/fmc/${RC}/positions?_=${Date.now()}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     riders = await r.json();
     // finishKm wordt gezet door loadRoute() op basis van werkelijke routelengte.
