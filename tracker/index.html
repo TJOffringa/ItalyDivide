@@ -619,12 +619,13 @@ function renderMarkers() {
   const seen = new Set();
 
   for (const rd of riders) {
-    seen.add(rd.deviceId);
+    const id = String(rd.deviceId);
+    seen.add(id);
     const color   = rd.riderColor || '#888';
     const opacity = rd.scratched ? 0.3 : 0.9;
 
-    if (markerMap[rd.deviceId]) {
-      markerMap[rd.deviceId]
+    if (markerMap[id]) {
+      markerMap[id]
         .setLatLng([rd.latitude, rd.longitude])
         .setStyle({ color, fillColor: color, opacity, fillOpacity: opacity });
     } else {
@@ -632,7 +633,7 @@ function renderMarkers() {
       const m = L.circleMarker([rd.latitude, rd.longitude], {
         radius: rd.scratched ? 4 : 6, color, fillColor: color,
         fillOpacity: opacity, opacity, weight: 1.5
-      }).addTo(map).bindPopup(() => popupHtml(riders.find(r => r.deviceId === rd.deviceId) || rd));
+      }).addTo(map).bindPopup(() => popupHtml(riders.find(r => String(r.deviceId) === id) || rd));
 
       if (!rd.scratched) {
         m.bindTooltip(`<span class="rl-inner">${firstName}</span>`, {
@@ -640,7 +641,7 @@ function renderMarkers() {
           className: 'rider-label', opacity: 1
         });
       }
-      markerMap[rd.deviceId] = m;
+      markerMap[id] = m;
     }
   }
   for (const id of Object.keys(markerMap)) {
