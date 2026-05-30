@@ -600,11 +600,8 @@ async function loadPositions() {
     } else {
       riders = allRiders;
     }
-    // finishKm wordt gezet door loadRoute() op basis van werkelijke routelengte.
-    if (finishKm === Infinity) {
-      const maxDist = Math.max(0, ...riders.filter(r => !r.scratched).map(r => r.distanceOnTrack || 0));
-      if (maxDist > 0) finishKm = maxDist;
-    }
+    // finishKm wordt uitsluitend gezet door loadRoute() op basis van werkelijke routelengte.
+    // Geen fallback op max-positie om te voorkomen dat de leider als gefinisht wordt getoond.
     renderMarkers();
     updateLabelVisibility();
     renderList();
