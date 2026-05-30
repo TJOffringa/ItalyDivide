@@ -322,7 +322,19 @@
       cursor: pointer; padding: 0 4px; line-height: 1;
     }
     #raceflow-close:hover { color: var(--text); }
-    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; }
+    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; }
+    #raceflow-canvas.dragging { cursor: grabbing; }
+    #raceflow-toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .rf-tb-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .rf-tb-btn:hover, .rf-tb-btn.active { background: var(--teal); color: #0a0f1e; border-color: var(--teal); font-weight: 700; }
+    .rf-tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+    #rf-zoom-hint { font-size: 10px; color: var(--muted); margin-left: auto; }
     #raceflow-legend {
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 8px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
@@ -452,6 +464,17 @@
         </select>
         <button id="raceflow-close" onclick="closeRaceFlow()">✕</button>
       </div>
+    </div>
+    <div id="raceflow-toolbar">
+      <button class="rf-tb-btn active" id="rfz-all"  onclick="rfSetWindow(null)">Alles</button>
+      <button class="rf-tb-btn"        id="rfz-12h"  onclick="rfSetWindow(12)">12u</button>
+      <button class="rf-tb-btn"        id="rfz-6h"   onclick="rfSetWindow(6)">6u</button>
+      <button class="rf-tb-btn"        id="rfz-3h"   onclick="rfSetWindow(3)">3u</button>
+      <div class="rf-tb-sep"></div>
+      <button class="rf-tb-btn"        onclick="rfZoom(0.7)">＋</button>
+      <button class="rf-tb-btn"        onclick="rfZoom(1.43)">－</button>
+      <button class="rf-tb-btn"        onclick="rfResetZoom()">↺</button>
+      <span id="rf-zoom-hint">scroll = zoom · drag = pan</span>
     </div>
     <canvas id="raceflow-canvas" height="380"></canvas>
     <div id="raceflow-legend"></div>
@@ -998,6 +1021,9 @@ async function checkResults() {
 }
 
 // ── Race Flow ──────────────────────────────────────────────────────────
+let rfData = null;
+let rfViewMs = null; // { minMs, maxMs } — null = alles
+
 function openRaceFlow() {
   document.getElementById('raceflow-modal').style.display = 'flex';
   loadRaceFlow();
@@ -1012,16 +1038,88 @@ async function loadRaceFlow() {
   try {
     const res = await fetch(`${API}/api/fmc/${RC}/raceflow?count=${count}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data.riders?.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
+    rfData = await res.json();
+    if (!rfData.riders?.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
     status.textContent = '';
-    drawRaceFlowChart(data);
-    legend.innerHTML = data.riders.map(r =>
+    rfViewMs = null;
+    drawRaceFlowChart(rfData);
+    legend.innerHTML = rfData.riders.map(r =>
       `<div class="rf-leg-item"><div class="rf-leg-dot" style="background:${r.color}"></div><span style="color:#e8eaf0">${r.name}</span></div>`
     ).join('');
+    initRaceFlowInteraction();
   } catch(e) {
     status.textContent = `Fout: ${e.message}`;
   }
+}
+
+function rfSetWindow(hours) {
+  if (!rfData) return;
+  document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  if (!hours) {
+    rfViewMs = null;
+    document.getElementById('rfz-all').classList.add('active');
+  } else {
+    const startMs = rfData.raceStart || RACE_START.getTime();
+    const endMs = Math.max(Date.now(), startMs + 1);
+    rfViewMs = { minMs: endMs - hours * 3600000, maxMs: endMs };
+    const el = document.getElementById('rfz-'+hours+'h');
+    if (el) el.classList.add('active');
+  }
+  drawRaceFlowChart(rfData);
+}
+
+function rfZoom(factor) {
+  if (!rfData) return;
+  const startMs = rfData.raceStart || RACE_START.getTime();
+  const now = Date.now();
+  const curMin = rfViewMs ? rfViewMs.minMs : startMs;
+  const curMax = rfViewMs ? rfViewMs.maxMs : now;
+  const center = (curMin + curMax) / 2;
+  const half = (curMax - curMin) / 2 * factor;
+  rfViewMs = { minMs: Math.max(startMs, center - half), maxMs: Math.min(now, center + half) };
+  document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  drawRaceFlowChart(rfData);
+}
+
+function rfResetZoom() {
+  rfViewMs = null;
+  document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('rfz-all').classList.add('active');
+  if (rfData) drawRaceFlowChart(rfData);
+}
+
+function initRaceFlowInteraction() {
+  const canvas = document.getElementById('raceflow-canvas');
+  let dragStart = null, dragViewMs = null;
+
+  canvas.onwheel = e => {
+    e.preventDefault();
+    rfZoom(e.deltaY > 0 ? 1.25 : 0.8);
+  };
+  canvas.onmousedown = e => {
+    dragStart = e.clientX;
+    dragViewMs = rfViewMs ? { ...rfViewMs } : (() => {
+      const s = rfData.raceStart || RACE_START.getTime();
+      return { minMs: s, maxMs: Date.now() };
+    })();
+    canvas.classList.add('dragging');
+  };
+  canvas.onmousemove = e => {
+    if (!dragStart) return;
+    const W = canvas.offsetWidth;
+    const pad = 55 + 20;
+    const span = dragViewMs.maxMs - dragViewMs.minMs;
+    const dx = (dragStart - e.clientX) / (W - pad) * span;
+    const startMs = rfData.raceStart || RACE_START.getTime();
+    const newMin = Math.max(startMs, dragViewMs.minMs + dx);
+    const newMax = Math.min(Date.now(), dragViewMs.maxMs + dx);
+    rfViewMs = { minMs: newMin, maxMs: newMax };
+    document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+    drawRaceFlowChart(rfData);
+  };
+  canvas.onmouseup = canvas.onmouseleave = () => {
+    dragStart = null; canvas.classList.remove('dragging');
+  };
 }
 
 function drawRaceFlowChart({ riders, totalKm, raceStart }) {
@@ -1040,23 +1138,33 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
 
   const now      = Date.now();
   const startMs  = raceStart || RACE_START.getTime();
-  const elapsedH = (now - startMs) / 3600000;
-  const maxKm    = totalKm || Math.max(1, ...riders.flatMap(r => r.pts.map(p => p[1])));
+  const viewMinMs = rfViewMs ? rfViewMs.minMs : startMs;
+  const viewMaxMs = rfViewMs ? rfViewMs.maxMs : Math.max(now, startMs + 3600000);
+  const spanH     = (viewMaxMs - viewMinMs) / 3600000;
+  const maxKm     = totalKm || Math.max(1, ...riders.flatMap(r => r.pts.map(p => p[1])));
+  // Determine visible km range based on visible data points
+  const visibleKms = riders.flatMap(r => r.pts.filter(([t]) => t >= viewMinMs && t <= viewMaxMs).map(p => p[1]));
+  const viewMinKm = 0;
+  const viewMaxKm = maxKm;
 
-  const xS = t  => pad.left + ((t - startMs) / 3600000) / elapsedH * cW;
-  const yS = km => pad.top  + (1 - km / maxKm) * cH;
+  const xS = t  => pad.left + (t - viewMinMs) / (viewMaxMs - viewMinMs) * cW;
+  const yS = km => pad.top  + (1 - (km - viewMinKm) / (viewMaxKm - viewMinKm)) * cH;
 
   ctx.strokeStyle = '#1e2d4a'; ctx.lineWidth = 1;
-  const hStep = elapsedH > 12 ? 4 : elapsedH > 6 ? 2 : 1;
-  for (let h = 0; h <= elapsedH; h += hStep) {
+  const hStep = spanH > 24 ? 6 : spanH > 12 ? 4 : spanH > 6 ? 2 : 1;
+  const startH = Math.ceil((viewMinMs - startMs) / 3600000);
+  const endH   = Math.floor((viewMaxMs - startMs) / 3600000);
+  for (let h = startH; h <= endH; h += hStep) {
     const x = xS(startMs + h * 3600000);
+    if (x < pad.left || x > pad.left + cW) continue;
     ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + cH); ctx.stroke();
     ctx.fillStyle = '#6b7a99'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(`+${h}u`, x, pad.top + cH + 14);
   }
-  const kmStep = maxKm > 400 ? 100 : maxKm > 200 ? 50 : 25;
-  for (let km = 0; km <= maxKm; km += kmStep) {
+  const kmStep = viewMaxKm > 400 ? 100 : viewMaxKm > 200 ? 50 : 25;
+  for (let km = 0; km <= viewMaxKm; km += kmStep) {
     const y = yS(km);
+    if (y < pad.top || y > pad.top + cH + 2) continue;
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
     ctx.fillStyle = '#6b7a99'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
     ctx.fillText(`${km} km`, pad.left - 6, y + 4);
@@ -1066,6 +1174,11 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
   ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + cH); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(pad.left, pad.top + cH); ctx.lineTo(pad.left + cW, pad.top + cH); ctx.stroke();
 
+  // Clip to chart area
+  ctx.save();
+  ctx.rect(pad.left, pad.top, cW, cH);
+  ctx.clip();
+
   for (const r of riders) {
     if (r.pts.length < 2) continue;
     ctx.strokeStyle = r.color || '#888';
@@ -1074,12 +1187,13 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
     ctx.beginPath();
     let started = false;
     for (const [t, km] of r.pts) {
-      if (t < startMs) continue;
+      if (t < viewMinMs - 3600000 || t > viewMaxMs + 3600000) continue;
       const x = xS(t), y = yS(km);
       if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
     }
     ctx.stroke();
   }
+  ctx.restore(); // end clip
 }
 
 // ── Route Ranking ──────────────────────────────────────────────────────
