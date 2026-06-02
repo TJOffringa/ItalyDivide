@@ -561,10 +561,10 @@ async function loadRoute() {
       const step = Math.max(1, Math.floor(pts.length / 2000));
       routePts = pts.filter((_, i) => i % step === 0);
     } else {
-      // Komoot route: static JSON files per race slug
+      // Komoot route: load via API server (avoids GitHub Pages path prefix issues)
       const [rr, sr] = await Promise.all([
-        fetch(`/${SLUG}/route.json`),
-        fetch(`/${SLUG}/route-segments.json`)
+        fetch(`${API}/${SLUG}/route.json`),
+        fetch(`${API}/${SLUG}/route-segments.json`)
       ]);
       if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
       routePts = await rr.json();
@@ -593,7 +593,7 @@ async function loadRoute() {
   // Checkpoints (only available for Komoot routes)
   if (!raceConfig?.routeFile) {
     try {
-      const r = await fetch(`/${SLUG}/checkpoints.json`);
+      const r = await fetch(`${API}/${SLUG}/checkpoints.json`);
       if (!r.ok) return;
       const cps = await r.json();
       cps.forEach(cp => {
@@ -1314,7 +1314,7 @@ async function toggleGradient() {
   btn.textContent = '⛰ Laden…';
   try {
     if (!gradientPts) {
-      const r = await fetch(`/${SLUG}/route-gradient.json`);
+      const r = await fetch(`${API}/${SLUG}/route-gradient.json`);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       gradientPts = await r.json();
     }
@@ -1347,7 +1347,7 @@ async function toggleSurface() {
   btn.textContent = '🛣 Laden…';
   try {
     if (!surfacePts) {
-      const r = await fetch(`/${SLUG}/route-surface.json`);
+      const r = await fetch(`${API}/${SLUG}/route-surface.json`);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       surfacePts = await r.json();
     }
