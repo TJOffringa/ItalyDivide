@@ -584,8 +584,8 @@ async function loadRoute() {
       routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
     finishKm = routeCum[routeCum.length - 1]; // werkelijke routelengte als finish
 
-    // Fit kaart op de route zodat hij direct zichtbaar is
-    if (routeLayer && routeLayer[0]) {
+    // Fit kaart op de route — alleen als riders nog niet geladen zijn (anders al gecentreerd op leider)
+    if (!mapCentered && routeLayer && routeLayer[0]) {
       try { map.fitBounds(routeLayer[0].getBounds(), { padding: [30, 30] }); } catch(e) {}
     }
   } catch(e) { console.warn('Route load failed:', e.message); }
