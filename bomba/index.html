@@ -157,7 +157,13 @@ async function loadRaces() {
       const finished = diffD >= 14;
       const card     = document.createElement('a');
       card.className = 'race-card' + (finished ? ' finished' : '');
-      card.href      = `../tracker/?race=${race.fmcCode}`;
+      if (race.trackingUrl) {
+        card.href = race.trackingUrl; card.target = '_blank';
+      } else if (race.fmcCode) {
+        card.href = `../tracker/?race=${race.fmcCode}`;
+      } else {
+        card.removeAttribute('href'); card.style.cursor = 'default';
+      }
       card.innerHTML = `
         <div class="card-accent"></div>
         <div class="card-body">
@@ -171,7 +177,10 @@ async function loadRaces() {
             ${race.type   ? `<div>🚴 ${race.type}</div>`     : ''}
           </div>
         </div>
-        <div class="card-footer">${raceFooter(race.start)}</div>`;
+        <div class="card-footer">${
+          race.trackingUrl ? raceFooter(race.start).replace('Bekijk tracker','Externe tracker').replace('Binnenkort','Extern →')
+          : !race.fmcCode  ? '<span style="color:var(--muted)">Tracker nog niet beschikbaar</span><span></span>'
+          : raceFooter(race.start)}</div>`;
       fragment.appendChild(card);
     }
     grid.insertBefore(fragment, grid.firstChild);
