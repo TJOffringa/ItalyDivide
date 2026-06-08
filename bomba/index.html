@@ -5,16 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bomba Tracker</title>
   <style>
+    @font-face {
+      font-family: 'Backcountry';
+      src: url('../fonts/Backcountry.ttf') format('truetype');
+      font-weight: normal;
+      font-display: swap;
+    }
     :root {
-      --bg:      #f5f6f8;
+      --bg:      #f6e4be;
       --surface: #ffffff;
-      --border:  #e5e7eb;
-      --text:    #111827;
+      --border:  #e3d4ac;
+      --text:    #1c2635;
       --muted:   #6b7280;
-      --navy:    #1e3a6e;
-      --red:     #e8194c;
-      --teal:    #00b4c2;
-      --teal-bg: #e6f9fb;
+      --navy:    #1c2635;
+      --red:     #b90a0a;
+      --cream:   #f6e4be;
+      --cream-bg:#fbf2dc;
+      --display: 'Backcountry', 'Arial Narrow', Impact, sans-serif;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -30,19 +37,26 @@
       display: flex;
       align-items: center;
       gap: 14px;
+      border-bottom: 4px solid var(--red);
     }
     #header img { height: 38px; }
     #logo-text {
-      font-size: 20px; font-weight: 900; letter-spacing: .04em;
-      color: #ffffff; display: none;
+      font-family: var(--display);
+      font-size: 28px; font-weight: normal; letter-spacing: .04em;
+      color: var(--cream); display: none;
     }
-    #header-sub { font-size: 11px; color: rgba(255,255,255,.55); margin-top: 2px; }
+    #header-sub {
+      font-family: var(--display);
+      font-size: 14px; letter-spacing: .06em; text-transform: uppercase;
+      color: rgba(246,228,190,.7); margin-top: 4px;
+    }
 
     #main { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
 
     #section-title {
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .1em; color: var(--muted); margin-bottom: 16px;
+      font-family: var(--display);
+      font-size: 18px; font-weight: normal; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--navy); margin-bottom: 16px;
     }
 
     #race-grid {
@@ -69,30 +83,34 @@
 
     .card-accent {
       height: 5px;
-      background: linear-gradient(90deg, var(--red), #00c4d4);
+      background: linear-gradient(90deg, var(--red), var(--navy));
     }
     .race-card.finished .card-accent { background: var(--border); }
 
     .card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
     .card-top  { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-    .card-name { font-size: 15px; font-weight: 700; color: var(--navy); line-height: 1.25; }
+    .card-name {
+      font-family: var(--display);
+      font-size: 20px; font-weight: normal; color: var(--navy); line-height: 1.1;
+      letter-spacing: .01em;
+    }
 
     .card-badge {
       font-size: 10px; font-weight: 700; padding: 3px 8px;
       border-radius: 20px; white-space: nowrap; flex-shrink: 0;
     }
     @keyframes p { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .badge-live     { background: #fde8ed; color: var(--red);  border: 1px solid #f9bece; }
-    .badge-soon     { background: var(--teal-bg); color: #007a87; border: 1px solid #b2e8ed; }
-    .badge-finished { background: #f3f4f6; color: var(--muted); border: 1px solid var(--border); }
+    .badge-live     { background: #f9dcdc; color: var(--red);  border: 1px solid #e9a3a3; }
+    .badge-soon     { background: var(--cream-bg); color: #8a6a1e; border: 1px solid #e3d4ac; }
+    .badge-finished { background: #eef0f3; color: var(--muted); border: 1px solid var(--border); }
 
     .card-meta { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
 
     .card-footer {
       border-top: 1px solid var(--border);
       padding: 10px 16px;
-      font-size: 12px; font-weight: 600;
-      color: var(--teal);
+      font-size: 12px; font-weight: 700;
+      color: var(--red);
       display: flex; align-items: center; justify-content: space-between;
     }
     .race-card.finished .card-footer { color: var(--muted); }
