@@ -721,8 +721,6 @@ function toggleFinishers() {
 }
 
 // ── Gradient overlay ───────────────────────────────────────────────────
-const GRADIENT_STEP = 4;
-
 const GRAD_STOPS = [
   [-8,       '#1e3a8a'],
   [-4,       '#2563eb'],
@@ -739,6 +737,7 @@ function gradColor(pct) {
 }
 
 function buildGradientLines(gradPts) {
+  // Smooth elevations over a small window to reduce GPS/elevation noise
   const sm = gradPts.map((p, i) => {
     const s = Math.max(0, i - 2), e = Math.min(gradPts.length - 1, i + 2);
     let sum = 0, n = 0;
@@ -746,27 +745,21 @@ function buildGradientLines(gradPts) {
     return [p[0], p[1], sum / n];
   });
 
+  // Draw line segments between consecutive gradient points, coloured by slope.
+  // Uses the gradient data's own coordinates → independent of routePts density.
   const lines = [];
   let col = null, seg = [];
-
   for (let i = 0; i < sm.length - 1; i++) {
     const distKm = hav([sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]);
-    const grad   = distKm > 0.03 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
+    const grad   = distKm > 0.02 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
     const c      = gradColor(grad);
-
-    const ri0 = i * GRADIENT_STEP;
-    const ri1 = Math.min((i + 1) * GRADIENT_STEP + 1, routePts.length);
-    const sub  = routePts.length > 0
-      ? routePts.slice(ri0, ri1).map(p => [p[0], p[1]])
-      : [[sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]];
-
+    const a = [sm[i][0], sm[i][1]], b = [sm[i+1][0], sm[i+1][1]];
     if (c !== col) {
       if (seg.length >= 2)
-        lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85,
-          lineJoin: 'round', lineCap: 'butt' }));
-      col = c; seg = sub.slice();
+        lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round', lineCap: 'butt' }));
+      col = c; seg = [a, b];
     } else {
-      if (sub.length > 1) seg.push(...sub.slice(1));
+      seg.push(b);
     }
   }
   if (seg.length >= 2)
