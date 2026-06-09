@@ -768,14 +768,20 @@ function buildGradientLines(gradPts) {
 }
 
 // ── Surface overlay ────────────────────────────────────────────────────
+// Twee dataformaten ondersteund:
+//   • Oud: array van 0/1 (verhard/onverhard), 1:1 geïndexeerd op routePts
+//   • Nieuw: array van [lat, lon, unpaved] (zelf-bevattend, density-onafhankelijk)
 function buildSurfaceLines(surf) {
-  if (!routePts.length || !surf.length) return [];
+  if (!surf.length) return [];
+  const selfContained = Array.isArray(surf[0]);
+  const coordAt = i => selfContained ? [surf[i][0], surf[i][1]] : (routePts[i] ? [routePts[i][0], routePts[i][1]] : null);
+  const unpavedAt = i => selfContained ? surf[i][2] === 1 : surf[i] === 1;
+  const len = selfContained ? surf.length : Math.min(routePts.length, surf.length);
+
   const lines = [];
   let seg = null;
-  const len = Math.min(routePts.length, surf.length);
-
   for (let i = 0; i <= len; i++) {
-    const unpaved = i < len && surf[i] === 1;
+    const unpaved = i < len && unpavedAt(i);
     if (!unpaved) {
       if (seg && seg.length >= 2)
         lines.push(L.polyline(seg, {
@@ -784,7 +790,8 @@ function buildSurfaceLines(surf) {
         }));
       seg = null;
     } else {
-      const pt = [routePts[i][0], routePts[i][1]];
+      const pt = coordAt(i);
+      if (!pt) continue;
       if (!seg) seg = [pt]; else seg.push(pt);
     }
   }
