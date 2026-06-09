@@ -778,23 +778,25 @@ function buildSurfaceLines(surf) {
   const unpavedAt = i => selfContained ? surf[i][2] === 1 : surf[i] === 1;
   const len = selfContained ? surf.length : Math.min(routePts.length, surf.length);
 
+  const PAVED   = { color: '#2e7d32', weight: 5, opacity: .9, lineJoin: 'round', lineCap: 'round' };
+  const UNPAVED = { color: '#b45309', weight: 5, opacity: .9, dashArray: '8 5', lineJoin: 'round', lineCap: 'round' };
+
+  // Teken aaneengesloten segmenten van beide typen (groen=verhard, bruin gestreept=onverhard)
   const lines = [];
-  let seg = null;
-  for (let i = 0; i <= len; i++) {
-    const unpaved = i < len && unpavedAt(i);
-    if (!unpaved) {
-      if (seg && seg.length >= 2)
-        lines.push(L.polyline(seg, {
-          color: '#b45309', weight: 5, opacity: .9,
-          dashArray: '8 5', lineJoin: 'round', lineCap: 'round',
-        }));
-      seg = null;
-    } else {
-      const pt = coordAt(i);
-      if (!pt) continue;
-      if (!seg) seg = [pt]; else seg.push(pt);
+  let seg = [], segUnpaved = null;
+  for (let i = 0; i < len; i++) {
+    const pt = coordAt(i);
+    if (!pt) continue;
+    const u = unpavedAt(i);
+    if (segUnpaved === null) { segUnpaved = u; seg = [pt]; }
+    else if (u === segUnpaved) { seg.push(pt); }
+    else {
+      seg.push(pt); // overgangspunt delen → geen gaten
+      if (seg.length >= 2) lines.push(L.polyline(seg, segUnpaved ? UNPAVED : PAVED));
+      seg = [pt]; segUnpaved = u;
     }
   }
+  if (seg.length >= 2) lines.push(L.polyline(seg, segUnpaved ? UNPAVED : PAVED));
   return lines;
 }
 
@@ -1383,7 +1385,7 @@ async function toggleSurface() {
     routeSetStyle({ opacity: 0 });
     btn.classList.add('active');
     showLegend(`
-      <div class="leg-row"><span class="leg-swatch" style="background:#4ade80"></span> Verhard (asfalt/beton)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#2e7d32"></span> Verhard (asfalt/beton)</div>
       <div class="leg-row"><span class="leg-swatch" style="background:#b45309; border-top: 1px dashed #b45309;"></span> Onverhard (gravel/dirt/gras)</div>`);
   } catch(e) {
     console.error('Surface:', e); clearOverlay();
