@@ -400,6 +400,7 @@
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
+        <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 Ondergrond</button>
@@ -1539,6 +1540,15 @@ function flyToLeader() {
   if (leader) map.setView([leader.latitude, leader.longitude], 12);
 }
 
+// Vlieg naar Laurens ten Dam (alleen Tour Divide)
+function flyToLau() {
+  const r = riders.find(x => /laurens/i.test(x.name) && /\bdam\b/i.test(x.name));
+  if (!r) return;
+  const m = markerMap[String(r.deviceId)];
+  if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
+  else if (r.latitude && r.longitude) { map.setView([r.latitude, r.longitude], 13); }
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────────
 function toggleSidebar() {
   sidebarOpen = !sidebarOpen;
@@ -1607,6 +1617,8 @@ async function init() {
       document.getElementById('race-title').textContent = raceConfig.name;
     }
   } catch(e) { console.warn('Config load failed:', e.message); }
+  // Lau-knop alleen voor Tour Divide
+  if (RC === 'tourdivide26') document.getElementById('btn-lau').style.display = '';
   initTabs();
   checkResults();
   checkOverlays();
