@@ -399,8 +399,8 @@
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
-        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek">⛰ Helling</button>
-        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond">🛣 Ondergrond</button>
+        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
+        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 Ondergrond</button>
       </div>
 
       <!-- Route tabs (multi-afstand races) -->
@@ -1033,6 +1033,19 @@ async function checkResults() {
   } catch(e) {}
 }
 
+// Toon helling/ondergrond-knoppen alleen als de data voor deze race bestaat
+async function checkOverlays() {
+  if (!SLUG) return;
+  const probe = async (file, btnId) => {
+    try {
+      const r = await fetch(`${API}/${SLUG}/${file}`, { method: 'HEAD' });
+      if (r.ok) document.getElementById(btnId).style.display = '';
+    } catch(e) {}
+  };
+  probe('route-gradient.json', 'btn-helling');
+  probe('route-surface.json',  'btn-surface');
+}
+
 // ── Race Flow ──────────────────────────────────────────────────────────
 let rfData = null;
 let rfViewMs = null; // { minMs, maxMs } — null = alles
@@ -1585,6 +1598,7 @@ async function init() {
   } catch(e) { console.warn('Config load failed:', e.message); }
   initTabs();
   checkResults();
+  checkOverlays();
   loadRoute();
   loadPositions().then(startCountdown);
 }
