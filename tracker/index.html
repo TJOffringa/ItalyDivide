@@ -127,13 +127,13 @@
     /* ── Rider list ── */
     #rider-list { flex: 1; overflow-y: auto; }
     .rider-row {
-      display: flex; align-items: flex-start; gap: 9px;
-      padding: 9px 12px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 6px;
+      padding: 9px 8px 9px 6px; border-bottom: 1px solid var(--border);
       cursor: pointer; transition: background .1s;
     }
     .rider-row:hover { background: var(--surface2); }
     .rider-row.scratched-row { opacity: .5; }
-    .r-rank    { font-size: 11px; font-weight: 700; color: var(--muted); min-width: 24px; text-align: right; flex-shrink: 0; padding-top: 1px; font-variant-numeric: tabular-nums; }
+    .r-rank    { font-size: 11px; font-weight: 700; color: var(--muted); min-width: 16px; text-align: right; flex-shrink: 0; padding-top: 1px; font-variant-numeric: tabular-nums; }
     .r-dot     { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
     .r-info    { flex: 1; min-width: 0; }
     .r-name    { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
@@ -1426,7 +1426,7 @@ function renderList() {
   function makeRow(rd, rank, badge, extraClass) {
     const row = document.createElement('div');
     row.className = 'rider-row' + (extraClass ? ' ' + extraClass : '');
-    const rankTxt = (rank != null && rank !== '') ? '#' + rank : '';
+    const rankTxt = (rank != null && rank !== '') ? rank : '';
     row.innerHTML = `
       <span class="r-rank">${rankTxt}</span>
       <span class="r-dot" style="background:${rd.riderColor || '#888'}"></span>
