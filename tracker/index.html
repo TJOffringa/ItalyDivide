@@ -75,7 +75,7 @@
     }
     #sidebar.collapsed { width: 0; border-right: none; }
     @media (max-width: 640px) {
-      #sidebar { position: absolute; top: 48px; left: 0; bottom: 0; z-index: 500; width: 50vw; max-width: 260px; }
+      #sidebar { position: absolute; top: 48px; left: 0; bottom: 0; z-index: 500; width: 78vw; max-width: 330px; box-shadow: 4px 0 16px rgba(28,38,53,.25); }
       #sidebar.collapsed { width: 0; }
     }
 
@@ -127,18 +127,20 @@
     /* ── Rider list ── */
     #rider-list { flex: 1; overflow-y: auto; }
     .rider-row {
-      display: flex; align-items: center; gap: 8px;
-      padding: 7px 12px; border-bottom: 1px solid rgba(30,45,74,.5);
+      display: flex; align-items: flex-start; gap: 9px;
+      padding: 9px 12px; border-bottom: 1px solid var(--border);
       cursor: pointer; transition: background .1s;
     }
     .rider-row:hover { background: var(--surface2); }
-    .rider-row.scratched-row { opacity: .4; }
-    .r-rank    { font-size: 11px; color: var(--muted); width: 22px; text-align: right; flex-shrink: 0; }
-    .r-dot     { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .r-name    { flex: 1; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .r-km      { font-size: 11px; color: var(--muted); flex-shrink: 0; }
-    .r-scratch { font-size: 10px; color: var(--red); flex-shrink: 0; }
-    .r-fin     { font-size: 10px; font-weight: 700; color: var(--green); flex-shrink: 0; }
+    .rider-row.scratched-row { opacity: .5; }
+    .r-rank    { font-size: 11px; font-weight: 700; color: var(--muted); min-width: 24px; text-align: right; flex-shrink: 0; padding-top: 1px; font-variant-numeric: tabular-nums; }
+    .r-dot     { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .r-info    { flex: 1; min-width: 0; }
+    .r-name    { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+    .r-meta    { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+    .r-km      { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .r-scratch { color: var(--red); font-weight: 600; }
+    .r-fin     { font-weight: 700; color: var(--green); }
 
     /* ── Map ── */
     #map { flex: 1; min-width: 0; position: relative; }
@@ -1424,11 +1426,14 @@ function renderList() {
   function makeRow(rd, rank, badge, extraClass) {
     const row = document.createElement('div');
     row.className = 'rider-row' + (extraClass ? ' ' + extraClass : '');
+    const rankTxt = (rank != null && rank !== '') ? '#' + rank : '';
     row.innerHTML = `
-      <span class="r-rank">${rank ?? ''}</span>
+      <span class="r-rank">${rankTxt}</span>
       <span class="r-dot" style="background:${rd.riderColor || '#888'}"></span>
-      <span class="r-name">${rd.name}</span>
-      ${badge}`;
+      <div class="r-info">
+        <div class="r-name">${rd.name}</div>
+        <div class="r-meta">${badge}</div>
+      </div>`;
     row.addEventListener('click', () => {
       const m = markerMap[rd.deviceId];
       if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
@@ -1499,8 +1504,12 @@ function renderList() {
     el.appendChild(hdr);
     const startRank = withTimes.length + 1;
     active.forEach((rd, i) => {
-      const km = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
-      el.appendChild(makeRow(rd, startRank + i, `<span class="r-km">${km} km</span>`, ''));
+      const d = rd.distanceOnTrack || 0;
+      const km = d > 0 ? d.toFixed(0) : '—';
+      const remain = (finishKm !== Infinity && d > 0) ? Math.max(0, finishKm - d) : null;
+      const badge = `<span class="r-km">${km} km</span>` +
+        (remain != null ? `<span style="color:var(--muted)">${remain.toFixed(0)} te gaan</span>` : '');
+      el.appendChild(makeRow(rd, startRank + i, badge, ''));
     });
   }
 
