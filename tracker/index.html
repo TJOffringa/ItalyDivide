@@ -1123,6 +1123,21 @@ async function checkOverlays() {
 let rfData = null;
 let rfViewMs = null; // { minMs, maxMs } — null = alles
 
+// Geef elke rijder een eigen, onderscheidende kleur over het hele spectrum (gulden hoek),
+// en Laurens ten Dam altijd felroze (met dikkere lijn) zodat hij meteen opvalt.
+function assignRfColors(riders) {
+  let h = 0;
+  for (const r of riders) {
+    if (/laurens/i.test(r.name) && /\bdam\b/i.test(r.name)) {
+      r.color = '#ff1aa8'; r._lau = true;
+    } else {
+      r.color = `hsl(${Math.round((h * 137.508) % 360)}, 75%, 47%)`;
+      r._lau = false;
+      h++;
+    }
+  }
+}
+
 function openRaceFlow() {
   document.getElementById('raceflow-modal').style.display = 'flex';
   loadRaceFlow();
@@ -1139,6 +1154,7 @@ async function loadRaceFlow() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     rfData = await res.json();
     if (!rfData.riders?.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
+    assignRfColors(rfData.riders);
     status.textContent = '';
     rfViewMs = null;
     drawRaceFlowChart(rfData);
@@ -1284,10 +1300,12 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
   ctx.rect(pad.left, pad.top, cW, cH);
   ctx.clip();
 
-  for (const r of riders) {
+  // Laurens als laatste tekenen zodat zijn felroze lijn bovenop ligt
+  const drawOrder = [...riders].sort((a, b) => (a._lau ? 1 : 0) - (b._lau ? 1 : 0));
+  for (const r of drawOrder) {
     if (r.pts.length < 2) continue;
     ctx.strokeStyle = r.color || '#888';
-    ctx.lineWidth   = 2.5;
+    ctx.lineWidth   = r._lau ? 4 : 2.5;
     ctx.lineJoin    = 'round';
     ctx.beginPath();
     let started = false;
