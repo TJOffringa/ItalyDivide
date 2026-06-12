@@ -699,7 +699,7 @@ async function loadPositions() {
       const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
                            .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
       if (leader) {
-        setViewLeaderLow([leader.latitude, leader.longitude], 11);
+        setViewLeaderLow([leader.latitude, leader.longitude], 12);
         mapCentered = true;
       }
     }
@@ -1607,12 +1607,10 @@ function startCountdown() {
 }
 
 // ── Fly to leader ─────────────────────────────────────────
-// Zet de leider laag in beeld (centrum boven de leider) zodat de route vóór hem zichtbaar is.
+// Centreer strak op de leider. (Vroeger schoven we het centrum naar boven, maar zolang de
+// leider nog dicht bij de start zit trok dat het beeld juist naar de start toe.)
 function setViewLeaderLow(latlng, zoom) {
   map.setView(latlng, zoom, { animate: false });
-  const pt = map.project(latlng, zoom);
-  pt.y -= map.getSize().y * 0.28;
-  map.setView(map.unproject(pt, zoom), zoom, { animate: false });
 }
 
 function flyToLeader() {
