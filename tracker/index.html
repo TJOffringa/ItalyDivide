@@ -1488,11 +1488,11 @@ function popupHtml(rd) {
   const id       = String(rd.deviceId);
   const hasTrack = !!riderTracks[id];
   const st       = rd._mstats;
+  // Alleen de totale gemiddelde snelheid (afstand ÷ racetijd) — robuust. Bewegingstijd en
+  // "tijdens fietsen" zijn weggelaten omdat stop-detectie met deze bron onbetrouwbaar is.
   const statsHtml = st ? `
     <div class="pu-stats">
-      <div class="pu-stat"><span>🚴 In beweging</span><b>${fmtDur(st.movingMs)}</b></div>
-      <div class="pu-stat"><span>💨 Gem. tijdens fietsen</span><b>${st.avgMovingKmh.toFixed(1)} km/u</b></div>
-      <div class="pu-stat"><span>⏱ Gem. incl. stops</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
+      <div class="pu-stat"><span>🚴 Gem. snelheid</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
     </div>` : '';
   return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
