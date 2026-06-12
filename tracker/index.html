@@ -1607,10 +1607,13 @@ function startCountdown() {
 }
 
 // ── Fly to leader ─────────────────────────────────────────
-// Centreer strak op de leider. (Vroeger schoven we het centrum naar boven, maar zolang de
-// leider nog dicht bij de start zit trok dat het beeld juist naar de start toe.)
+// Plaats de leider op ~25% vanaf de onderkant van het scherm (laag in beeld), met het
+// veld erboven. Zoom 12 houdt de start (noord) buiten beeld.
 function setViewLeaderLow(latlng, zoom) {
   map.setView(latlng, zoom, { animate: false });
+  const pt = map.project(latlng, zoom);
+  pt.y -= map.getSize().y * 0.25;   // centrum boven de leider → leider zakt naar ~25% van onderen
+  map.setView(map.unproject(pt, zoom), zoom, { animate: false });
 }
 
 function flyToLeader() {
