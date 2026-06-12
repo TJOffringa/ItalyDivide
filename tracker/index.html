@@ -699,8 +699,16 @@ async function loadPositions() {
       const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
                            .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
       if (leader) {
-        setViewLeaderLow([leader.latitude, leader.longitude], 12);
         mapCentered = true;
+        const centerLeader = () => {
+          map.invalidateSize();   // mobiel: containerhoogte kan bij laden nog niet kloppen
+          setViewLeaderLow([leader.latitude, leader.longitude], 12);
+        };
+        centerLeader();
+        // Herhaal nadat de mobiele layout/adresbalk definitief is, anders centreert hij met
+        // een verkeerde hoogte en valt de leider buiten beeld.
+        setTimeout(centerLeader, 350);
+        setTimeout(centerLeader, 900);
       }
     }
     const finished  = riders.filter(r => !r.scratched && r.distanceOnTrack >= finishKm - 0.5).length;
@@ -1226,11 +1234,16 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
   const viewMinMs = rfViewMs ? rfViewMs.minMs : startMs;
   const viewMaxMs = rfViewMs ? rfViewMs.maxMs : Math.max(now, startMs + 3600000);
   const spanH     = (viewMaxMs - viewMinMs) / 3600000;
-  const maxKm     = totalKm || Math.max(1, ...riders.flatMap(r => r.pts.map(p => p[1])));
-  // Determine visible km range based on visible data points
+  // Y-as auto-zoomt op het zichtbare datatbereik (laagste t/m hoogste gereden afstand) met
+  // wat marge — net als de officiële tracker — i.p.v. 0→totale routelengte, zodat de lijnen
+  // het hele vlak vullen en leesbaar zijn (leider bovenin).
   const visibleKms = riders.flatMap(r => r.pts.filter(([t]) => t >= viewMinMs && t <= viewMaxMs).map(p => p[1]));
-  const viewMinKm = 0;
-  const viewMaxKm = maxKm;
+  const allKms  = visibleKms.length ? visibleKms : riders.flatMap(r => r.pts.map(p => p[1]));
+  const dataMax = allKms.length ? Math.max(...allKms) : 1;
+  const dataMin = allKms.length ? Math.min(...allKms) : 0;
+  const margin  = Math.max(1, dataMax - dataMin) * 0.08;
+  const viewMinKm = Math.max(0, dataMin - margin);
+  const viewMaxKm = dataMax + margin;
 
   const xS = t  => pad.left + (t - viewMinMs) / (viewMaxMs - viewMinMs) * cW;
   const yS = km => pad.top  + (1 - (km - viewMinKm) / (viewMaxKm - viewMinKm)) * cH;
@@ -1246,8 +1259,9 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
     ctx.fillStyle = '#6b7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(`+${h}u`, x, pad.top + cH + 14);
   }
-  const kmStep = viewMaxKm > 400 ? 100 : viewMaxKm > 200 ? 50 : 25;
-  for (let km = 0; km <= viewMaxKm; km += kmStep) {
+  const kmRange = viewMaxKm - viewMinKm;
+  const kmStep = kmRange > 400 ? 100 : kmRange > 200 ? 50 : kmRange > 80 ? 25 : kmRange > 40 ? 10 : 5;
+  for (let km = Math.ceil(viewMinKm / kmStep) * kmStep; km <= viewMaxKm; km += kmStep) {
     const y = yS(km);
     if (y < pad.top || y > pad.top + cH + 2) continue;
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
