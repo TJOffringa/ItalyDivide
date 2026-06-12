@@ -365,6 +365,9 @@
     .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
     .pu-name { font-weight: 700; margin-bottom: 4px; }
     .pu-meta { font-size: 11px; color: var(--muted); }
+    .pu-stats { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+    .pu-stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); }
+    .pu-stat b { color: var(--text); font-size: 12px; white-space: nowrap; }
     .cp-label { background: var(--navy) !important; border: none !important; box-shadow: none !important; color: var(--cream) !important; font-size: 10px !important; font-weight: 700 !important; white-space: nowrap; padding: 2px 6px !important; border-radius: 3px; }
     .cp-label::before { display: none !important; }
   </style>
@@ -1396,6 +1399,17 @@ async function toggleSurface() {
   btn.textContent = '🛣 Ondergrond';
 }
 
+function fmtDur(ms) {
+  if (!ms || ms < 0) return '—';
+  const totMin = Math.round(ms / 60000);
+  const d = Math.floor(totMin / 1440);
+  const h = Math.floor((totMin % 1440) / 60);
+  const m = totMin % 60;
+  if (d > 0) return `${d}d ${h}u ${m}m`;
+  if (h > 0) return `${h}u ${m}m`;
+  return `${m}m`;
+}
+
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
   const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
@@ -1404,8 +1418,16 @@ function popupHtml(rd) {
                                  : '<span style="color:var(--green)">Rijdend</span>';
   const id       = String(rd.deviceId);
   const hasTrack = !!riderTracks[id];
+  const st       = rd._mstats;
+  const statsHtml = st ? `
+    <div class="pu-stats">
+      <div class="pu-stat"><span>🚴 In beweging</span><b>${fmtDur(st.movingMs)}</b></div>
+      <div class="pu-stat"><span>💨 Gem. tijdens fietsen</span><b>${st.avgMovingKmh.toFixed(1)} km/u</b></div>
+      <div class="pu-stat"><span>⏱ Gem. incl. stops</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
+    </div>` : '';
   return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
+    ${statsHtml}
     <button class="pu-track-btn${hasTrack ? ' active' : ''}" style="margin-top:8px;width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:${hasTrack?'var(--green)':'var(--muted)'};font-size:11px;cursor:pointer;font-family:inherit" onclick="toggleTrack('${id}')">
       ${hasTrack ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
     </button>`;
