@@ -689,10 +689,16 @@ async function loadPositions() {
     renderMarkers();
     updateLabelVisibility();
     renderList();
-    if (!riderHistoryCache) {
+    // History ophalen voor de eerste keer, en daarna verversen zolang de route-ranglijst open is
+    if (!riderHistoryCache || routeRankingMode) {
       fetch(`${API}/api/fmc/${RC}/history`)
         .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) { riderHistoryCache = data; renderList(); } })
+        .then(data => {
+          if (!data) return;
+          riderHistoryCache = data;
+          renderList();
+          if (routeRankingMode && lastClickedKm !== null) showRouteRanking(lastClickedKm);
+        })
         .catch(() => {});
     }
     if (!mapCentered) {
@@ -1310,12 +1316,10 @@ async function toggleRouteRanking() {
   if (routeRankingMode) {
     document.getElementById('route-rank-panel').style.display = 'flex';
     map.getContainer().classList.add('map-crosshair');
-    if (!riderHistoryCache) {
-      try {
-        const r = await fetch(`${API}/api/fmc/${RC}/history`);
-        if (r.ok) riderHistoryCache = await r.json();
-      } catch(e) { console.warn('History load failed:', e.message); }
-    }
+    try {  // altijd verse history bij openen (anders verouderde doortijden)
+      const r = await fetch(`${API}/api/fmc/${RC}/history`);
+      if (r.ok) riderHistoryCache = await r.json();
+    } catch(e) { console.warn('History load failed:', e.message); }
   } else {
     closeRouteRanking();
   }
@@ -1768,7 +1772,7 @@ async function init() {
     if (r.ok) {
       raceConfig = await r.json();
       SLUG       = raceConfig.slug || '';
-      RACE_START = new Date(raceConfig.start);
+      RACE_START = new Date(raceConfig.officialStart || raceConfig.start); // anker voor doortijden/schattingen
       document.title = `${raceConfig.name} — Bomba Tracker`;
       document.getElementById('race-title').textContent = raceConfig.name;
     }
