@@ -152,6 +152,24 @@
       border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
       pointer-events: none;
     }
+    #race-clock {
+      position: absolute; top: 10px; right: 10px; z-index: 800;
+      background: rgba(255,255,255,.94); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; min-width: 144px;
+      box-shadow: 0 2px 8px rgba(28,38,53,.15);
+      font-variant-numeric: tabular-nums; pointer-events: none;
+    }
+    #race-clock .rc-timer { font-family: var(--display); font-size: 20px; color: var(--red); line-height: 1; letter-spacing: .02em; }
+    #race-clock .rc-label { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 2px; }
+    #race-clock .rc-times { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text); }
+    #race-clock .rc-time { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    #race-clock .rc-time span { color: var(--muted); font-size: 11px; }
+    #race-clock .rc-time b { font-weight: 600; }
+    #race-clock .rc-time small { color: var(--muted); font-size: 10px; font-weight: 400; margin-left: 3px; }
+    @media (max-width: 640px) {
+      #race-clock { top: 8px; right: 8px; padding: 6px 9px; min-width: 0; }
+      #race-clock .rc-timer { font-size: 16px; }
+    }
 
     /* ── Rider name labels ── */
     .rider-label {
@@ -454,6 +472,14 @@
         <div id="rrp-list"><div class="rrp-empty">Klik op een punt op de route</div></div>
       </div>
       <div id="refresh-bar">↺ —</div>
+      <div id="race-clock" style="display:none">
+        <div class="rc-timer" id="rc-timer">—</div>
+        <div class="rc-label" id="rc-label">racetijd</div>
+        <div class="rc-times">
+          <div class="rc-time"><span>🇳🇱 NL</span><b id="rc-nl">—</b></div>
+          <div class="rc-time" id="rc-local-row"><span>📍 lokaal</span><b><span id="rc-local">—</span><small id="rc-local-lbl"></small></b></div>
+        </div>
+      </div>
       <div id="overlay-legend"></div>
     </div>
   </div>
@@ -657,7 +683,7 @@ async function loadPositions() {
       const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
                            .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
       if (leader) {
-        map.setView([leader.latitude, leader.longitude], 11);
+        setViewLeaderLow([leader.latitude, leader.longitude], 11);
         mapCentered = true;
       }
     }
@@ -1556,10 +1582,47 @@ function startCountdown() {
 }
 
 // ── Fly to leader ─────────────────────────────────────────
+// Zet de leider laag in beeld (centrum boven de leider) zodat de route vóór hem zichtbaar is.
+function setViewLeaderLow(latlng, zoom) {
+  map.setView(latlng, zoom, { animate: false });
+  const pt = map.project(latlng, zoom);
+  pt.y -= map.getSize().y * 0.28;
+  map.setView(map.unproject(pt, zoom), zoom, { animate: false });
+}
+
 function flyToLeader() {
   const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
                        .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
-  if (leader) map.setView([leader.latitude, leader.longitude], 12);
+  if (leader) setViewLeaderLow([leader.latitude, leader.longitude], 12);
+}
+
+// ── Race-klok rechtsboven: racetijd + NL- en lokale tijd ───
+let raceClockTimer = null;
+function startRaceClock() {
+  if (!raceConfig) return;
+  const box = document.getElementById('race-clock');
+  const startRef = new Date(raceConfig.officialStart || raceConfig.start).getTime();
+  const localTz  = raceConfig.localTz || null;
+  const nlFmt  = new Intl.DateTimeFormat('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+  const locFmt = localTz ? new Intl.DateTimeFormat('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone: localTz }) : null;
+  document.getElementById('rc-local-row').style.display = localTz ? '' : 'none';
+  if (localTz) document.getElementById('rc-local-lbl').textContent = raceConfig.localTzLabel || '';
+  box.style.display = '';
+  function tick() {
+    const now  = Date.now();
+    const diff = now - startRef;
+    const abs  = Math.abs(diff);
+    const s = Math.floor(abs / 1000);
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    const dur = `${d}d ${String(h).padStart(2,'0')}u ${String(m).padStart(2,'0')}m`;
+    document.getElementById('rc-timer').textContent = diff < 0 ? '-' + dur : dur;
+    document.getElementById('rc-label').textContent = diff < 0 ? 'tot start' : 'racetijd';
+    document.getElementById('rc-nl').textContent = nlFmt.format(now);
+    if (locFmt) document.getElementById('rc-local').textContent = locFmt.format(now);
+  }
+  tick();
+  clearInterval(raceClockTimer);
+  raceClockTimer = setInterval(tick, 1000);
 }
 
 // Vlieg naar Laurens ten Dam (alleen Tour Divide)
@@ -1644,6 +1707,7 @@ async function init() {
   initTabs();
   checkResults();
   checkOverlays();
+  startRaceClock();
   loadRoute();
   loadPositions().then(startCountdown);
 }
