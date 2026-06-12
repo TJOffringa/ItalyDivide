@@ -369,7 +369,7 @@
       cursor: pointer; padding: 0 4px; line-height: 1;
     }
     #raceflow-close:hover { color: var(--text); }
-    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; }
+    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; touch-action: none; }
     #raceflow-canvas.dragging { cursor: grabbing; }
     #raceflow-toolbar {
       display: flex; align-items: center; gap: 6px;
@@ -1183,18 +1183,42 @@ function rfSetWindow(hours) {
   drawRaceFlowChart(rfData);
 }
 
-function rfZoom(factor) {
+// Tijd onder een x-positie op het scherm (voor zoom-anker op cursor/pinch).
+function rfScreenToMs(clientX) {
+  const canvas = document.getElementById('raceflow-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const padL = 55, padR = 20;
+  const cW = Math.max(1, rect.width - padL - padR);
+  const frac = Math.max(0, Math.min(1, (clientX - rect.left - padL) / cW));
+  const startMs = rfData.raceStart || RACE_START.getTime();
+  const min = rfViewMs ? rfViewMs.minMs : startMs;
+  const max = rfViewMs ? rfViewMs.maxMs : Date.now();
+  return min + frac * (max - min);
+}
+
+// Zoom (alleen tijd-as) rond een ankerpunt; lijndikte blijft gelijk want we hertekenen.
+function rfZoomAt(factor, anchorMs) {
   if (!rfData) return;
   const startMs = rfData.raceStart || RACE_START.getTime();
   const now = Date.now();
   const curMin = rfViewMs ? rfViewMs.minMs : startMs;
   const curMax = rfViewMs ? rfViewMs.maxMs : now;
-  const center = (curMin + curMax) / 2;
-  const half = (curMax - curMin) / 2 * factor;
-  rfViewMs = { minMs: Math.max(startMs, center - half), maxMs: Math.min(now, center + half) };
+  if (anchorMs == null) anchorMs = (curMin + curMax) / 2;
+  const fracLeft = (anchorMs - curMin) / Math.max(1, curMax - curMin);
+  let span = (curMax - curMin) * factor;
+  span = Math.max(5 * 60000, Math.min(now - startMs, span)); // tussen 5 min en hele race
+  let newMin = anchorMs - fracLeft * span;
+  let newMax = newMin + span;
+  if (newMin < startMs) { newMin = startMs; newMax = newMin + span; }
+  if (newMax > now)     { newMax = now;     newMin = newMax - span; }
+  newMin = Math.max(startMs, newMin);
+  rfViewMs = (newMax - newMin >= (now - startMs) - 1000) ? null : { minMs: newMin, maxMs: newMax };
   document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  if (!rfViewMs) document.getElementById('rfz-all').classList.add('active');
   drawRaceFlowChart(rfData);
 }
+
+function rfZoom(factor) { rfZoomAt(factor, null); }
 
 function rfResetZoom() {
   rfViewMs = null;
@@ -1205,35 +1229,56 @@ function rfResetZoom() {
 
 function initRaceFlowInteraction() {
   const canvas = document.getElementById('raceflow-canvas');
-  let dragStart = null, dragViewMs = null;
+  let dragStartX = null, dragViewMs = null;   // pan
+  let pinchDist = null;                        // pinch-zoom
 
-  canvas.onwheel = e => {
-    e.preventDefault();
-    rfZoom(e.deltaY > 0 ? 1.25 : 0.8);
-  };
-  canvas.onmousedown = e => {
-    dragStart = e.clientX;
-    dragViewMs = rfViewMs ? { ...rfViewMs } : (() => {
-      const s = rfData.raceStart || RACE_START.getTime();
-      return { minMs: s, maxMs: Date.now() };
-    })();
-    canvas.classList.add('dragging');
-  };
-  canvas.onmousemove = e => {
-    if (!dragStart) return;
-    const W = canvas.offsetWidth;
-    const pad = 55 + 20;
+  const viewNow = () => rfViewMs ? { ...rfViewMs }
+    : { minMs: rfData.raceStart || RACE_START.getTime(), maxMs: Date.now() };
+
+  function panTo(clientX) {
+    if (!dragViewMs) return;
+    const W = canvas.offsetWidth, pad = 55 + 20;
     const span = dragViewMs.maxMs - dragViewMs.minMs;
-    const dx = (dragStart - e.clientX) / (W - pad) * span;
-    const startMs = rfData.raceStart || RACE_START.getTime();
-    const newMin = Math.max(startMs, dragViewMs.minMs + dx);
-    const newMax = Math.min(Date.now(), dragViewMs.maxMs + dx);
-    rfViewMs = { minMs: newMin, maxMs: newMax };
+    const dx = (dragStartX - clientX) / Math.max(1, W - pad) * span;
+    const startMs = rfData.raceStart || RACE_START.getTime(), now = Date.now();
+    let newMin = dragViewMs.minMs + dx, newMax = dragViewMs.maxMs + dx;
+    if (newMin < startMs) { newMax += startMs - newMin; newMin = startMs; } // schuif mee, niet krimpen
+    if (newMax > now)     { newMin -= newMax - now;     newMax = now; }
+    rfViewMs = { minMs: Math.max(startMs, newMin), maxMs: newMax };
     document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
     drawRaceFlowChart(rfData);
+  }
+
+  // Muis: wiel = zoom rond cursor, slepen = pan
+  canvas.onwheel = e => { e.preventDefault(); rfZoomAt(e.deltaY > 0 ? 1.25 : 0.8, rfScreenToMs(e.clientX)); };
+  canvas.onmousedown = e => { dragStartX = e.clientX; dragViewMs = viewNow(); canvas.classList.add('dragging'); };
+  canvas.onmousemove = e => { if (dragStartX != null) panTo(e.clientX); };
+  canvas.onmouseup = canvas.onmouseleave = () => { dragStartX = null; canvas.classList.remove('dragging'); };
+
+  // Touch (mobiel): 1 vinger = pan, 2 vingers = pinch-zoom (hertekent → lijndikte blijft gelijk)
+  canvas.ontouchstart = e => {
+    e.preventDefault();
+    if (e.touches.length === 1) { dragStartX = e.touches[0].clientX; dragViewMs = viewNow(); pinchDist = null; }
+    else if (e.touches.length >= 2) {
+      const [a, b] = e.touches;
+      pinchDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      dragStartX = null;
+    }
   };
-  canvas.onmouseup = canvas.onmouseleave = () => {
-    dragStart = null; canvas.classList.remove('dragging');
+  canvas.ontouchmove = e => {
+    e.preventDefault();
+    if (e.touches.length >= 2 && pinchDist) {
+      const [a, b] = e.touches;
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const center = (a.clientX + b.clientX) / 2;
+      if (d > 0) { rfZoomAt(pinchDist / d, rfScreenToMs(center)); pinchDist = d; } // uit elkaar → inzoomen
+    } else if (e.touches.length === 1 && dragStartX != null) {
+      panTo(e.touches[0].clientX);
+    }
+  };
+  canvas.ontouchend = e => {
+    if (e.touches.length === 0) { dragStartX = null; pinchDist = null; }
+    else if (e.touches.length === 1) { dragStartX = e.touches[0].clientX; dragViewMs = viewNow(); pinchDist = null; }
   };
 }
 
