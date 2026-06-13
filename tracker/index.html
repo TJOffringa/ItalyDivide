@@ -293,6 +293,12 @@
       background: var(--teal); border: none; border-radius: 6px;
       color: var(--cream); font-size: 12px; font-weight: 700; cursor: pointer;
     }
+    #poi-quick { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+    #poi-quick button {
+      padding: 4px 8px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; color: var(--text); font-size: 11px; cursor: pointer; white-space: nowrap;
+    }
+    #poi-quick button:hover { border-color: var(--teal); color: var(--teal); }
     #poi-status { font-size: 10px; color: var(--muted); margin-bottom: 4px; min-height: 14px; }
     #poi-layers { display: flex; flex-direction: column; gap: 3px; }
     .poi-layer {
@@ -464,6 +470,13 @@
               <option value="10">10 km</option>
             </select>
             <button id="poi-btn" onclick="searchPoi()">Zoek</button>
+          </div>
+          <div id="poi-quick">
+            <button onclick="quickPoi('supermarkt')">🛒 Supermarkt</button>
+            <button onclick="quickPoi('hotel')">🏨 Hotel</button>
+            <button onclick="quickPoi('camping')">🏕 Camping</button>
+            <button onclick="quickPoi('lodge')">🏡 Lodge</button>
+            <button onclick="quickPoi('tankstation')">⛽ Tankstation</button>
           </div>
           <div id="poi-status"></div>
           <div id="poi-layers"></div>
@@ -985,14 +998,23 @@ function togglePoi() {
 
 function togglePoiPanel() { togglePoi(); }
 
+// Snelknop: vul de zoekterm in en zoek direct
+function quickPoi(term) {
+  document.getElementById('poi-input').value = term;
+  searchPoi();
+}
+
+let poiSearching = false;
 async function searchPoi() {
   const q       = document.getElementById('poi-input').value.trim();
   const maxdist = document.getElementById('poi-dist').value;
   const status  = document.getElementById('poi-status');
   if (!q) return;
+  if (poiSearching) { status.textContent = '⏳ Even wachten — vorige zoekopdracht loopt nog…'; return; }
   const key = `${q}|${maxdist}km`;
   if (poiLayers[key]) { status.textContent = 'Al geladen — zie laag hieronder.'; return; }
   status.textContent = '⏳ Zoeken langs de hele route… (kan ~30 s duren)';
+  poiSearching = true;
   document.getElementById('poi-btn').disabled = true;
   try {
     const res = await fetch(`${API}/api/fmc/${RC}/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
@@ -1020,6 +1042,7 @@ async function searchPoi() {
   } catch(e) {
     status.textContent = `Fout: ${e.message}`;
   } finally {
+    poiSearching = false;
     document.getElementById('poi-btn').disabled = false;
   }
 }
