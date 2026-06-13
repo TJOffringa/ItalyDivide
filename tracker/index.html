@@ -1018,6 +1018,10 @@ async function toggleTrack(id) {
           liveTimer = setInterval(() => { s.durationMs = Date.now() - s.startMs; mk.setIcon(makeStopIcon(s)); }, 60000);
         }
         riderTracks[id] = { line, hourMarkers, stopMarkers, liveTimer };
+        // Bolletje meteen op het verste (=verste) trackpunt zetten, zodat het samenvalt met
+        // de gereden route (de track is vers opgehaald; de marker kan tot ~5 min ouder zijn)
+        const tip = pts[pts.length - 1];
+        if (tip && markerMap[id]) markerMap[id].setLatLng([tip[0], tip[1]]);
         map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
       }
     } catch(e) { console.error('Track error:', e); }
