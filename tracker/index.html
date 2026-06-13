@@ -784,9 +784,8 @@ function renderMarkers() {
 }
 
 function updateLabelVisibility() {
-  const anyTrackActive = Object.keys(riderTracks).length > 0;
-  const show = labelsVisible && !anyTrackActive;
-  if (map) map.getContainer().classList.toggle('labels-hidden', !show);
+  // Namen volgen alleen de labels-knop; een actieve "gereden route" verbergt ze niet meer.
+  if (map) map.getContainer().classList.toggle('labels-hidden', !labelsVisible);
   const btn = document.getElementById('btn-labels');
   if (btn) btn.classList.toggle('active', labelsVisible);
 }
@@ -1586,12 +1585,17 @@ function popupHtml(rd) {
     <div class="pu-stats">
       <div class="pu-stat"><span>🚴 Gem. snelheid</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
     </div>` : '';
+  const gmaps = (rd.latitude && rd.longitude)
+    ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
+    : null;
+  const btnStyle = 'margin-top:6px;width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;display:block;text-align:center;text-decoration:none;box-sizing:border-box';
   return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
     ${statsHtml}
-    <button class="pu-track-btn${hasTrack ? ' active' : ''}" style="margin-top:8px;width:100%;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:${hasTrack?'var(--green)':'var(--muted)'};font-size:11px;cursor:pointer;font-family:inherit" onclick="toggleTrack('${id}')">
+    <button class="pu-track-btn${hasTrack ? ' active' : ''}" style="${btnStyle};background:var(--surface2);color:${hasTrack?'var(--green)':'var(--muted)'}" onclick="toggleTrack('${id}')">
       ${hasTrack ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
-    </button>`;
+    </button>
+    ${gmaps ? `<a href="${gmaps}" target="_blank" rel="noopener" style="${btnStyle};background:var(--surface2);color:var(--navy)">🛰 Bekijk in Google Maps</a>` : ''}`;
 }
 
 // ── Leaderboard ────────────────────────────────────────────────────────
