@@ -1887,6 +1887,7 @@ function toggleGhostTrack(gi) {
   if (ghostTracks[gi]) {
     ghostTracks[gi].line.remove();
     ghostTracks[gi].stops.forEach(m => m.remove());
+    ghostTracks[gi].hourMarkers.forEach(m => m.remove());
     delete ghostTracks[gi];
   } else {
     const startRef = new Date(raceConfig.officialStart || raceConfig.start).getTime();
@@ -1896,11 +1897,12 @@ function toggleGhostTrack(gi) {
     const seg = [];
     for (let i = 0; i < routePts.length; i++) { if (routeCum[i] <= curKm) seg.push(routePts[i]); else break; }
     const line = L.polyline(seg, { color: g.color, weight: 4, opacity: .8, dashArray: '8 6', lineJoin: 'round' }).addTo(map);
-    // pseudo-track [lat,lon,ts,km] uit de tempo-curve → rustplekken detecteren
+    // pseudo-track [lat,lon,ts,km] uit de tempo-curve → uur-tijdstempels + rustplekken
     const track = g.points.filter(p => p[0] <= hrs + 0.01 && p[1] <= curKm + 1)
       .map(([h, km]) => { const pt = routePointAtKm(km) || [0,0]; return [pt[0], pt[1], startRef + h*3600000, km]; });
+    const hourMarkers = drawHourMarkers(track);
     const stops = drawStopMarkers(extractStopsFromTrack(track, null, startRef + hrs*3600000));
-    ghostTracks[gi] = { line, stops };
+    ghostTracks[gi] = { line, stops, hourMarkers };
   }
   const mk = ghostMarkers[gi];
   if (mk && mk.getPopup()) mk.getPopup().update();  // popup-knop verversen (functie-content)
