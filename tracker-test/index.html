@@ -1,0 +1,1986 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bomba Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    @font-face {
+      font-family: 'Backcountry';
+      src: url('../fonts/Backcountry.ttf') format('truetype');
+      font-weight: normal;
+      font-display: swap;
+    }
+    :root {
+      --bg:      #f6e4be;
+      --surface: #ffffff;
+      --surface2:#fbf2dc;
+      --border:  #e3d4ac;
+      --text:    #1c2635;
+      --muted:   #6b7280;
+      --red:     #b90a0a;
+      --teal:    #1c2635;   /* accent voor active states → navy in huisstijl */
+      --green:   #2e7d32;
+      --navy:    #1c2635;
+      --cream:   #f6e4be;
+      --display: 'Backcountry', 'Arial Narrow', Impact, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+      font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; }
+
+    #app { display: flex; height: 100dvh; flex-direction: column; }
+
+    /* ── Header ── */
+    #header {
+      background: var(--navy);
+      padding: 8px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; gap: 10px; min-height: 48px;
+      border-bottom: 3px solid var(--red);
+    }
+    #hdr-left  { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    #hdr-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    #back { font-size: 11px; color: rgba(246,228,190,.6); text-decoration: none; white-space: nowrap; }
+    #back:hover { color: var(--cream); }
+    #race-title {
+      font-family: var(--display);
+      font-size: 20px; font-weight: normal; letter-spacing: .02em;
+      color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #live-badge {
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0;
+      background: rgba(185,10,10,.2); color: #ff8a8a; border: 1px solid rgba(185,10,10,.5);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+    #status-txt { font-size: 11px; color: rgba(246,228,190,.55); }
+    #sidebar-toggle {
+      background: none; border: 1px solid rgba(246,228,190,.3); color: rgba(246,228,190,.8);
+      font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+    }
+    #sidebar-toggle:hover { color: var(--cream); border-color: rgba(246,228,190,.6); }
+
+    /* ── Body ── */
+    #body { display: flex; flex: 1; min-height: 0; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 280px; flex-shrink: 0; background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+      transition: width .2s ease;
+    }
+    #sidebar.collapsed { width: 0; border-right: none; }
+    @media (max-width: 640px) {
+      #sidebar { position: absolute; top: 48px; left: 0; bottom: 0; z-index: 500; width: 50vw; max-width: 50vw; box-shadow: 4px 0 16px rgba(28,38,53,.25); }
+      #sidebar.collapsed { width: 0; }
+    }
+
+    /* ── Sidebar top stats ── */
+    #sidebar-top { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #stats-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .stat-pill {
+      font-size: 11px; padding: 2px 8px; border-radius: 12px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .stat-pill.active   { color: var(--green); border-color: rgba(74,222,128,.3); }
+    .stat-pill.scratched { color: var(--red); border-color: rgba(185,10,10,.3); }
+
+    /* ── Controls bar ── */
+    #controls {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 6px;
+      flex-shrink: 0;
+    }
+    .ctrl-btn {
+      font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
+      transition: color .12s, border-color .12s, background .12s;
+      white-space: nowrap;
+    }
+    .ctrl-btn:hover { color: var(--text); border-color: var(--muted); }
+    .ctrl-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 600; }
+    .ctrl-btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+
+    /* ── Route tabs ── */
+    #route-tabs { display: none; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 4px; }
+    .tab-btn {
+      font-size: 12px; font-weight: 700; padding: 5px 16px; border-radius: 6px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      transition: color .12s, background .12s, border-color .12s;
+    }
+    .tab-btn:hover { color: var(--text); border-color: var(--muted); }
+    .tab-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); }
+
+    /* ── Search ── */
+    #search-wrap { padding: 8px 12px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #search { width: 100%; padding: 6px 10px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
+    #search:focus { outline: none; border-color: var(--teal); }
+    #search::placeholder { color: var(--muted); }
+
+    /* ── Rider list ── */
+    #rider-list { flex: 1; overflow-y: auto; }
+    .rider-row {
+      display: flex; align-items: flex-start; gap: 6px;
+      padding: 9px 8px 9px 6px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background .1s;
+    }
+    .rider-row:hover { background: var(--surface2); }
+    .rider-row.scratched-row { opacity: .5; }
+    .r-rank    { font-size: 11px; font-weight: 700; color: var(--muted); min-width: 16px; text-align: right; flex-shrink: 0; padding-top: 1px; font-variant-numeric: tabular-nums; }
+    .r-dot     { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .r-info    { flex: 1; min-width: 0; }
+    .r-name    { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+    .r-meta    { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+    .r-km      { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .r-scratch { color: var(--red); font-weight: 600; }
+    .r-fin     { font-weight: 700; color: var(--green); }
+
+    /* ── Map ── */
+    #map { flex: 1; min-width: 0; position: relative; }
+    .leaflet-container { background: #e8eef0; }
+
+    #refresh-bar {
+      position: absolute; bottom: 10px; right: 10px; z-index: 800;
+      background: rgba(255,255,255,.9); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
+      pointer-events: none;
+    }
+    .ghost-icon { background: none; border: none; }
+    .ghost-icon .ghost-sq { width: 15px; height: 15px; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(28,38,53,.6); }
+    .ghost-icon .ghost-lbl { position: absolute; left: 19px; top: -2px; font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
+    .leaflet-control-scale-line {
+      background: rgba(255,255,255,.85); border: 1px solid var(--navy); border-top: none;
+      color: var(--navy); font-size: 11px; font-weight: 600; padding: 1px 6px; line-height: 1.3;
+    }
+    #race-clock {
+      position: absolute; top: 10px; right: 10px; z-index: 800;
+      background: rgba(255,255,255,.94); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; min-width: 144px;
+      box-shadow: 0 2px 8px rgba(28,38,53,.15);
+      font-variant-numeric: tabular-nums; pointer-events: none;
+    }
+    #race-clock .rc-timer { font-family: var(--display); font-size: 20px; color: var(--red); line-height: 1; letter-spacing: .02em; }
+    #race-clock .rc-label { font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 2px; }
+    #race-clock .rc-times { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text); }
+    #race-clock .rc-time { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    #race-clock .rc-time span { color: var(--muted); font-size: 11px; }
+    #race-clock .rc-time b { font-weight: 600; }
+    #race-clock .rc-time small { color: var(--muted); font-size: 10px; font-weight: 400; margin-left: 3px; }
+    @media (max-width: 640px) {
+      #race-clock { top: 8px; right: 8px; padding: 6px 9px; min-width: 0; }
+      #race-clock .rc-timer { font-size: 16px; }
+    }
+    /* Fullscreen-kaart */
+    #map:fullscreen, #map:-webkit-full-screen { width: 100%; height: 100%; }
+    #map.map-fullscreen {
+      position: fixed; inset: 0; z-index: 9999;
+      width: 100% !important; height: 100% !important;
+    }
+    #map-fs-close {
+      position: absolute; top: 10px; left: 10px; z-index: 1000;
+      width: 38px; height: 38px; border-radius: 8px;
+      border: 1px solid var(--border); background: rgba(255,255,255,.94);
+      color: var(--text); font-size: 18px; line-height: 1; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(28,38,53,.2);
+    }
+    #map-fs-close:hover { border-color: var(--muted); }
+
+    /* ── Rider name labels ── */
+    .rider-label {
+      background: none !important; border: none !important; box-shadow: none !important;
+      padding: 0 !important;
+    }
+    .rider-label::before { display: none !important; }
+    .rl-inner {
+      font-size: 11px; font-weight: 700; color: #fff;
+      background: rgba(28,38,53,.85); padding: 2px 5px;
+      border-radius: 2px; white-space: nowrap; pointer-events: none;
+      text-shadow: 0 1px 2px rgba(0,0,0,.9);
+    }
+
+    /* ── Label visibility ── */
+    .labels-hidden .rider-label { display: none !important; }
+
+    /* ── Sidebar section headers ── */
+    .section-hdr {
+      padding: 5px 12px 4px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .section-collapse {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 13px; padding: 0 4px; font-family: inherit;
+    }
+    .section-collapse:hover { color: var(--text); }
+
+    /* ── Overlay legend ── */
+    #overlay-legend {
+      display: none;
+      position: absolute; bottom: 40px; left: 10px; z-index: 800;
+      background: rgba(255,255,255,.95); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 10px; font-size: 10px;
+      pointer-events: none; line-height: 1.6;
+    }
+    .leg-row { display: flex; align-items: center; gap: 5px; }
+    .leg-swatch { width: 16px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Route Ranking Panel ── */
+    #route-rank-panel {
+      position: absolute; top: 10px; left: 10px; z-index: 800;
+      background: rgba(255,255,255,.97); border: 1px solid var(--border);
+      border-radius: 10px; width: 260px; max-height: calc(100% - 20px);
+      display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 4px 24px rgba(28,38,53,.25);
+    }
+    #rrp-header { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #rrp-km { font-size: 11px; color: var(--teal); font-weight: 700; margin-bottom: 6px; }
+    #rrp-filters { display: flex; gap: 4px; align-items: center; }
+    .rrp-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 5px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      transition: color .1s, background .1s, border-color .1s;
+    }
+    .rrp-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 700; }
+    #rrp-close { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 2px; line-height: 1; }
+    #rrp-close:hover { color: var(--text); }
+    #rrp-list { flex: 1; overflow-y: auto; }
+    .rrp-row {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 12px; border-bottom: 1px solid rgba(30,45,74,.5); font-size: 12px;
+    }
+    .rrp-rank { font-size: 10px; color: var(--muted); width: 18px; text-align: right; flex-shrink: 0; }
+    .rrp-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .rrp-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rrp-gap  { font-size: 10px; color: var(--muted); flex-shrink: 0; min-width: 54px; text-align: right; }
+    .rrp-time { font-size: 10px; color: var(--teal); flex-shrink: 0; font-weight: 600; min-width: 36px; text-align: right; }
+    .rrp-empty { padding: 20px 12px; font-size: 12px; color: var(--muted); text-align: center; }
+    @media (max-width: 640px) {
+      #route-rank-panel { top: auto; bottom: 40px; left: 4px; right: 4px; width: auto; max-height: 50vh; }
+    }
+    .map-crosshair { cursor: crosshair !important; }
+
+    /* ── POI search panel ── */
+    #poi-section { border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    #poi-toggle {
+      width: 100%; padding: 8px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer;
+      font-size: 11px; color: var(--muted); font-family: inherit;
+    }
+    #poi-toggle:hover { color: var(--text); }
+    #poi-body { display: none; padding: 8px 12px 10px; }
+    #poi-body.open { display: block; }
+    #poi-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+    #poi-input {
+      flex: 1 1 100%; padding: 7px 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 12px; font-family: inherit;
+    }
+    #poi-input::placeholder { color: var(--muted); }
+    #poi-input:focus { outline: none; border-color: var(--teal); }
+    #poi-dist {
+      flex: 1; padding: 7px 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--muted); font-size: 12px; cursor: pointer;
+    }
+    #poi-btn {
+      flex: 2; padding: 7px 12px;
+      background: var(--teal); border: none; border-radius: 6px;
+      color: var(--cream); font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    #poi-quick { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+    #poi-quick button {
+      padding: 4px 8px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; color: var(--text); font-size: 11px; cursor: pointer; white-space: nowrap;
+    }
+    #poi-quick button:hover { border-color: var(--teal); color: var(--teal); }
+    #poi-status { font-size: 10px; color: var(--muted); margin-bottom: 4px; min-height: 14px; }
+    #poi-layers { display: flex; flex-direction: column; gap: 3px; }
+    .poi-layer {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; padding: 4px 6px;
+      background: var(--surface2); border-radius: 4px; border: 1px solid var(--border);
+    }
+    .poi-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .poi-lbl  { flex: 1; color: var(--text); }
+    .poi-cnt  { font-size: 10px; color: var(--muted); }
+    .poi-vis, .poi-rm { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 12px; padding: 0 2px; }
+    .poi-vis:hover, .poi-rm:hover { color: var(--text); }
+
+    /* ── Results modal ── */
+    #results-modal {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center;
+    }
+    #results-inner {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      width: min(95vw, 680px); max-height: 90vh; display: flex; flex-direction: column;
+      overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.7);
+    }
+    #results-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #results-hdr-title { font-family: var(--display); font-size: 18px; font-weight: normal; letter-spacing: .03em; color: var(--navy); }
+    #results-close {
+      background: none; border: none; color: var(--muted); font-size: 18px;
+      cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    #results-close:hover { color: var(--text); }
+    #results-body { flex: 1; overflow-y: auto; padding: 0; }
+    .res-section-hdr {
+      padding: 7px 16px 5px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); background: var(--surface2);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1;
+    }
+    .res-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 16px; border-bottom: 1px solid rgba(30,45,74,.4); font-size: 12px;
+    }
+    .res-pos  { font-size: 11px; color: var(--muted); width: 24px; text-align: right; flex-shrink: 0; font-weight: 700; }
+    .res-pos.gold   { color: #f0c040; }
+    .res-pos.silver { color: #aabbc8; }
+    .res-pos.bronze { color: #cd7f32; }
+    .res-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .res-time { font-size: 11px; color: var(--green); font-weight: 700; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .res-gap  { font-size: 11px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .res-near { font-size: 11px; color: #f0a500; flex-shrink: 0; }
+    .res-note {
+      padding: 10px 16px 12px; font-size: 11px; color: var(--muted);
+      border-top: 1px solid var(--border); line-height: 1.5;
+    }
+
+    /* ── Race Flow modal ── */
+    #raceflow-modal {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center;
+    }
+    #raceflow-inner {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      width: min(95vw, 760px); max-height: 90vh; display: flex; flex-direction: column;
+      overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.7);
+    }
+    #raceflow-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      font-family: var(--display); font-size: 18px; font-weight: normal; letter-spacing: .03em; color: var(--navy);
+    }
+    #raceflow-hdr select {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
+    }
+    #raceflow-close {
+      background: none; border: none; color: var(--muted); font-size: 18px;
+      cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    #raceflow-close:hover { color: var(--text); }
+    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; touch-action: none; }
+    #raceflow-canvas.dragging { cursor: grabbing; }
+    #raceflow-toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .rf-tb-btn {
+      font-size: 10px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .rf-tb-btn:hover, .rf-tb-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 700; }
+    .rf-tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+    #rf-zoom-hint { font-size: 10px; color: var(--muted); margin-left: auto; }
+    #raceflow-legend {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding: 8px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+      font-size: 10px;
+    }
+    .rf-leg-item { display: flex; align-items: center; gap: 4px; }
+    .rf-leg-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    #raceflow-status { padding: 8px 16px; font-size: 12px; color: var(--muted); text-align: center; }
+
+    /* ── Popups ── */
+    .leaflet-popup-content-wrapper { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); box-shadow: 0 4px 20px rgba(28,38,53,.2); }
+    .leaflet-popup-tip { background: var(--surface); border: 1px solid var(--border); }
+    .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
+    .pu-name { font-weight: 700; margin-bottom: 4px; }
+    .pu-meta { font-size: 11px; color: var(--muted); }
+    .pu-stats { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+    .pu-stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); }
+    .pu-stat b { color: var(--text); font-size: 12px; white-space: nowrap; }
+    .cp-label { background: var(--navy) !important; border: none !important; box-shadow: none !important; color: var(--cream) !important; font-size: 10px !important; font-weight: 700 !important; white-space: nowrap; padding: 2px 6px !important; border-radius: 3px; }
+    .cp-label::before { display: none !important; }
+  </style>
+</head>
+<body>
+<div style="position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:99999;background:#b90a0a;color:#fff;font:700 11px sans-serif;padding:2px 12px;border-radius:0 0 6px 6px;letter-spacing:.1em;pointer-events:none">🧪 TESTVERSIE</div>
+<div id="app">
+
+  <div id="header">
+    <div id="hdr-left">
+      <a id="back" href="../bomba/index.html">← Bomba</a>
+      <div id="race-title">Laden…</div>
+      <div id="live-badge"><span class="pulse"></span>Live</div>
+    </div>
+    <div id="hdr-right">
+      <span id="status-txt">Loading…</span>
+      <button id="sidebar-toggle" onclick="toggleSidebar()">☰ Klassement</button>
+    </div>
+  </div>
+
+  <div id="body">
+    <div id="sidebar">
+
+      <div id="sidebar-top">
+        <div id="stats-row">
+          <span class="stat-pill active"    id="pill-active">— rijdend</span>
+          <span class="stat-pill scratched" id="pill-scratch">— uitgevallen</span>
+        </div>
+      </div>
+
+      <div id="controls">
+        <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
+        <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
+        <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
+        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
+        <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
+        <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
+        <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
+        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
+        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 Ondergrond</button>
+        <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ Scherm</button>
+      </div>
+
+      <!-- Route tabs (multi-afstand races) -->
+      <div id="route-tabs" style="display:none"></div>
+
+      <!-- POI search -->
+      <div id="poi-section">
+        <button id="poi-toggle" onclick="togglePoiPanel()">
+          <span>📍 Zoek langs route</span><span id="poi-arrow">▸</span>
+        </button>
+        <div id="poi-body">
+          <div id="poi-row">
+            <input id="poi-input" placeholder="hotel, apotheek, mcdonalds…" type="text">
+            <select id="poi-dist">
+              <option value="1">1 km</option>
+              <option value="2" selected>2 km</option>
+              <option value="5">5 km</option>
+              <option value="10">10 km</option>
+            </select>
+            <button id="poi-btn" onclick="searchPoi()">Zoek</button>
+          </div>
+          <div id="poi-quick">
+            <button onclick="quickPoi('supermarkt')">🛒 Supermarkt</button>
+            <button onclick="quickPoi('hotel')">🏨 Hotel</button>
+            <button onclick="quickPoi('camping')">🏕 Camping</button>
+            <button onclick="quickPoi('lodge')">🏡 Lodge</button>
+            <button onclick="quickPoi('tankstation')">⛽ Tankstation</button>
+          </div>
+          <div id="poi-status"></div>
+          <div id="poi-layers"></div>
+        </div>
+      </div>
+
+      <div id="search-wrap">
+        <input id="search" type="text" placeholder="Zoek rijder…" oninput="filterList()">
+      </div>
+
+      <div id="rider-list"></div>
+    </div>
+
+    <div id="map">
+      <div id="route-rank-panel" style="display:none">
+        <div id="rrp-header">
+          <div id="rrp-km">Klik op de route om een punt te kiezen</div>
+          <div id="rrp-filters">
+            <button class="rrp-btn active" id="rrpf-all"   onclick="setRRFilter('all')">Alles</button>
+            <button class="rrp-btn"        id="rrpf-top10" onclick="setRRFilter('top10')">Top 10</button>
+            <button class="rrp-btn"        id="rrpf-top25" onclick="setRRFilter('top25')">Top 25</button>
+            <button id="rrp-close" onclick="closeRouteRanking()">✕</button>
+          </div>
+        </div>
+        <div id="rrp-list"><div class="rrp-empty">Klik op een punt op de route</div></div>
+      </div>
+      <div id="refresh-bar">↺ —</div>
+      <button id="map-fs-close" onclick="toggleFullscreen()" title="Sluiten (Esc)" style="display:none">✕</button>
+      <div id="race-clock" style="display:none">
+        <div class="rc-timer" id="rc-timer">—</div>
+        <div class="rc-label" id="rc-label">racetijd</div>
+        <div class="rc-times">
+          <div class="rc-time"><span>🇳🇱 NL</span><b id="rc-nl">—</b></div>
+          <div class="rc-time" id="rc-local-row"><span>📍 lokaal</span><b><span id="rc-local">—</span><small id="rc-local-lbl"></small></b></div>
+        </div>
+      </div>
+      <div id="overlay-legend"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Results modal -->
+<div id="results-modal" style="display:none" onclick="if(event.target===this)closeResults()">
+  <div id="results-inner">
+    <div id="results-hdr">
+      <span id="results-hdr-title">🏆 Resultaten</span>
+      <button id="results-close" onclick="closeResults()">✕</button>
+    </div>
+    <div id="results-body"><div style="padding:20px;color:var(--muted);font-size:12px">Laden…</div></div>
+  </div>
+</div>
+
+<!-- Race Flow modal -->
+<div id="raceflow-modal" style="display:none" onclick="if(event.target===this)closeRaceFlow()">
+  <div id="raceflow-inner">
+    <div id="raceflow-hdr">
+      <span>📊 Race Flow — Positie vs. Tijd</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <select id="rf-count" onchange="loadRaceFlow()">
+          <option value="5">Top 5</option>
+          <option value="10" selected>Top 10</option>
+          <option value="20">Top 20</option>
+        </select>
+        <button id="raceflow-close" onclick="closeRaceFlow()">✕</button>
+      </div>
+    </div>
+    <div id="raceflow-toolbar">
+      <button class="rf-tb-btn active" id="rfz-all"  onclick="rfSetWindow(null)">Alles</button>
+      <button class="rf-tb-btn"        id="rfz-12h"  onclick="rfSetWindow(12)">12u</button>
+      <button class="rf-tb-btn"        id="rfz-6h"   onclick="rfSetWindow(6)">6u</button>
+      <button class="rf-tb-btn"        id="rfz-3h"   onclick="rfSetWindow(3)">3u</button>
+      <div class="rf-tb-sep"></div>
+      <button class="rf-tb-btn"        onclick="rfZoom(0.7)">＋</button>
+      <button class="rf-tb-btn"        onclick="rfZoom(1.43)">－</button>
+      <button class="rf-tb-btn"        onclick="rfResetZoom()">↺</button>
+      <span id="rf-zoom-hint">scroll = zoom · drag = pan</span>
+    </div>
+    <canvas id="raceflow-canvas" height="380"></canvas>
+    <div id="raceflow-legend"></div>
+    <div id="raceflow-status"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+const API      = 'https://tracker.klikschaak.nl';
+const RC       = new URLSearchParams(location.search).get('race') || '';
+const INTERVAL = 300;
+
+let SLUG       = '';
+let raceConfig = null;
+let RACE_START = new Date();
+
+let map, routeLayer;
+let markerMap   = {};
+let riders      = [];
+let finishKm    = Infinity;
+let mapCentered = false;
+let sidebarOpen = window.innerWidth > 640;
+let cdSecs = INTERVAL, cdTimer;
+
+let routePts      = [];
+let routeCum      = [];
+let gradientLayer = null;
+let surfaceLayer  = null;
+
+// ── Map ────────────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([48, 10], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
+  }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  // Schaalbalk in km — beweegt automatisch mee met zoomen (afstanden inschatten)
+  L.control.scale({ metric: true, imperial: false, maxWidth: 140, position: 'bottomleft' }).addTo(map);
+  map.on('zoomend', updateLabelVisibility);
+  map.on('click', function(e) {
+    if (!routeRankingMode || !routePts.length) return;
+    const nearest = nearestRoutePt(e.latlng.lat, e.latlng.lng);
+    if (nearest.dist > 10) return;
+    if (selectedRouteMarker) selectedRouteMarker.remove();
+    selectedRouteMarker = L.circleMarker(routePts[nearest.idx], {
+      radius: 9, color: '#ffbc00', fillColor: '#ffbc00', fillOpacity: 1, weight: 2, pane: 'markerPane'
+    }).addTo(map);
+    showRouteRanking(nearest.km);
+  });
+  document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+  setTimeout(() => map.invalidateSize(), 250);
+}
+
+// ── Haversine ──────────────────────────────────────────────────────────
+function hav([la1,lo1],[la2,lo2]) {
+  const R = 6371, r = Math.PI/180;
+  const a = Math.sin((la2-la1)*r/2)**2 + Math.cos(la1*r)*Math.cos(la2*r)*Math.sin((lo2-lo1)*r/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── Route + Checkpoints ────────────────────────────────────────────────
+function routeSetStyle(opts) { if (routeLayer) routeLayer.forEach(l => l.setStyle(opts)); }
+
+async function loadRoute() {
+  if (!SLUG && !raceConfig?.routeFile) return;
+
+  try {
+    if (raceConfig?.routeFile) {
+      // GeoJSON route via FMC API (e.g. Seven Serpents)
+      const r = await fetch(`${API}/api/fmc/${RC}/route?f=${raceConfig.routeFile}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const geojson = await r.json();
+      if (routeLayer) routeLayer.forEach(l => l.remove());
+      routeLayer = [L.geoJSON(geojson, {
+        style: { color: '#b90a0a', weight: 4, opacity: .85 },
+        coordsToLatLng: c => L.latLng(parseFloat(c[1]), parseFloat(c[0]))
+      }).addTo(map)];
+      const pts = [];
+      for (const feat of (geojson.features || [])) {
+        const geom  = feat.geometry;
+        const lines = geom.type === 'MultiLineString' ? geom.coordinates : [geom.coordinates];
+        for (const line of lines) for (const c of line) pts.push([parseFloat(c[1]), parseFloat(c[0])]);
+      }
+      const step = Math.max(1, Math.floor(pts.length / 2000));
+      routePts = pts.filter((_, i) => i % step === 0);
+    } else {
+      // Komoot route: load via API server (avoids GitHub Pages path prefix issues)
+      const [rr, sr] = await Promise.all([
+        fetch(`${API}/${SLUG}/route.json`),
+        fetch(`${API}/${SLUG}/route-segments.json`)
+      ]);
+      if (!rr.ok) throw new Error(`HTTP ${rr.status}`);
+      routePts = await rr.json();
+      if (routeLayer) routeLayer.forEach(l => l.remove());
+      const segs = sr.ok ? await sr.json() : null;
+      if (segs && segs.length > 1) {
+        routeLayer = segs.map(s =>
+          L.polyline(routePts.slice(s.from, s.to + 1), { color: '#b90a0a', weight: 4, opacity: .85 }).addTo(map)
+        );
+      } else {
+        routeLayer = [L.polyline(routePts, { color: '#b90a0a', weight: 4, opacity: .85 }).addTo(map)];
+      }
+    }
+
+    routeCum = [0];
+    for (let i = 1; i < routePts.length; i++)
+      routeCum.push(routeCum[i-1] + hav(routePts[i-1], routePts[i]));
+    finishKm = routeCum[routeCum.length - 1]; // werkelijke routelengte als finish
+
+    // Fit kaart op de route — alleen als riders nog niet geladen zijn (anders al gecentreerd op leider)
+    if (!mapCentered && routeLayer && routeLayer[0]) {
+      try { map.fitBounds(routeLayer[0].getBounds(), { padding: [30, 30] }); } catch(e) {}
+    }
+  } catch(e) { console.warn('Route load failed:', e.message); }
+
+  // Checkpoints (only available for Komoot routes)
+  if (!raceConfig?.routeFile) {
+    try {
+      const r = await fetch(`${API}/${SLUG}/checkpoints.json`);
+      if (!r.ok) return;
+      const cps = await r.json();
+      cps.forEach(cp => {
+        const isFinish = cp.label === 'Finish' || cp.label === 'FINISH';
+        const isStart  = cp.label === 'Start'  || cp.label === 'START';
+        const color    = isFinish ? '#2e7d32' : isStart ? '#b45309' : '#1c2635';
+        L.circleMarker([cp.lat, cp.lon], {
+          radius: 7, color, fillColor: color, fillOpacity: 1, weight: 2
+        }).addTo(map).bindTooltip(cp.label, { permanent: true, direction: 'top',
+          className: 'cp-label', offset: [0, -8] });
+      });
+    } catch(e) { console.warn('Checkpoints load failed:', e.message); }
+  }
+}
+
+// ── Positions ──────────────────────────────────────────────────────────
+async function loadPositions() {
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/positions?_=${Date.now()}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    allRiders = await r.json();
+    // Tab-filter toepassen indien van toepassing, anders alle riders tonen
+    const tabs = raceConfig?.tabs;
+    if (tabs?.length) {
+      const segs = tabs[activeTab].segments;
+      riders = segs ? allRiders.filter(r => segs.includes(r.segment)) : allRiders;
+    } else {
+      riders = allRiders;
+    }
+    // finishKm wordt uitsluitend gezet door loadRoute() op basis van werkelijke routelengte.
+    // Geen fallback op max-positie om te voorkomen dat de leider als gefinisht wordt getoond.
+    renderMarkers();
+    updateLabelVisibility();
+    renderList();
+    // History ophalen voor de eerste keer, en daarna verversen zolang de route-ranglijst open is
+    if (!riderHistoryCache || routeRankingMode) {
+      fetch(`${API}/api/fmc/${RC}/history`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return;
+          riderHistoryCache = data;
+          renderList();
+          if (routeRankingMode && lastClickedKm !== null) showRouteRanking(lastClickedKm);
+        })
+        .catch(() => {});
+    }
+    if (!mapCentered) {
+      const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
+                           .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
+      if (leader) {
+        mapCentered = true;
+        const centerLeader = () => {
+          map.invalidateSize();   // mobiel: containerhoogte kan bij laden nog niet kloppen
+          setViewLeaderLow([leader.latitude, leader.longitude], 12);
+        };
+        centerLeader();
+        // Herhaal nadat de mobiele layout/adresbalk definitief is, anders centreert hij met
+        // een verkeerde hoogte en valt de leider buiten beeld.
+        setTimeout(centerLeader, 350);
+        setTimeout(centerLeader, 900);
+      }
+    }
+    const finished  = riders.filter(r => !r.scratched && r.distanceOnTrack >= finishKm - 0.5).length;
+    const active    = riders.filter(r => !r.scratched && r.distanceOnTrack  < finishKm - 0.5).length;
+    const scratched = riders.filter(r =>  r.scratched).length;
+    document.getElementById('pill-active').textContent  = `${finished} fin · ${active} rijdend`;
+    document.getElementById('pill-scratch').textContent = `${scratched} DNF`;
+    document.getElementById('status-txt').textContent   =
+      `${riders.length} riders · ${new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
+  } catch(e) {
+    document.getElementById('status-txt').textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Markers ────────────────────────────────────────────────────────────
+function renderMarkers() {
+  const seen = new Set();
+
+  for (const rd of riders) {
+    const id = String(rd.deviceId);
+    seen.add(id);
+    const color   = rd.riderColor || '#888';
+    const opacity = rd.scratched ? 0.3 : 0.9;
+
+    if (markerMap[id]) {
+      markerMap[id]
+        .setLatLng([rd.latitude, rd.longitude])
+        .setStyle({ color, fillColor: color, opacity, fillOpacity: opacity });
+    } else {
+      const firstName = rd.name.split(' ')[0];
+      const m = L.circleMarker([rd.latitude, rd.longitude], {
+        radius: rd.scratched ? 4 : 6, color, fillColor: color,
+        fillOpacity: opacity, opacity, weight: 1.5
+      }).addTo(map).bindPopup(() => popupHtml(riders.find(r => String(r.deviceId) === id) || rd));
+
+      if (!rd.scratched) {
+        m.bindTooltip(`<span class="rl-inner">${firstName}</span>`, {
+          permanent: true, direction: 'right', offset: [7, 0],
+          className: 'rider-label', opacity: 1
+        });
+      }
+      markerMap[id] = m;
+    }
+  }
+  for (const id of Object.keys(markerMap)) {
+    if (!seen.has(id)) { markerMap[id].remove(); delete markerMap[id]; }
+  }
+}
+
+function updateLabelVisibility() {
+  // Namen volgen alleen de labels-knop; een actieve "gereden route" verbergt ze niet meer.
+  if (map) map.getContainer().classList.toggle('labels-hidden', !labelsVisible);
+  const btn = document.getElementById('btn-labels');
+  if (btn) btn.classList.toggle('active', labelsVisible);
+}
+
+function toggleLabels() {
+  labelsVisible = !labelsVisible;
+  updateLabelVisibility();
+}
+
+function toggleFinishers() {
+  finishersCollapsed = !finishersCollapsed;
+  renderList();
+}
+
+// ── Gradient overlay ───────────────────────────────────────────────────
+const GRAD_STOPS = [
+  [-8,       '#1e3a8a'],
+  [-4,       '#2563eb'],
+  [-1.5,     '#93c5fd'],
+  [ 1.5,     '#4ade80'],
+  [ 4,       '#fde047'],
+  [ 8,       '#f97316'],
+  [12,       '#ef4444'],
+  [Infinity, '#111827'],
+];
+function gradColor(pct) {
+  for (const [max, col] of GRAD_STOPS) if (pct < max) return col;
+  return '#111827';
+}
+
+function buildGradientLines(gradPts) {
+  // Smooth elevations over a small window to reduce GPS/elevation noise
+  const sm = gradPts.map((p, i) => {
+    const s = Math.max(0, i - 2), e = Math.min(gradPts.length - 1, i + 2);
+    let sum = 0, n = 0;
+    for (let j = s; j <= e; j++) { sum += gradPts[j][2]; n++; }
+    return [p[0], p[1], sum / n];
+  });
+
+  // Draw line segments between consecutive gradient points, coloured by slope.
+  // Uses the gradient data's own coordinates → independent of routePts density.
+  const lines = [];
+  let col = null, seg = [];
+  for (let i = 0; i < sm.length - 1; i++) {
+    const distKm = hav([sm[i][0], sm[i][1]], [sm[i+1][0], sm[i+1][1]]);
+    const grad   = distKm > 0.02 ? (sm[i+1][2] - sm[i][2]) / (distKm * 10) : 0;
+    const c      = gradColor(grad);
+    const a = [sm[i][0], sm[i][1]], b = [sm[i+1][0], sm[i+1][1]];
+    if (c !== col) {
+      if (seg.length >= 2)
+        lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round', lineCap: 'butt' }));
+      col = c; seg = [a, b];
+    } else {
+      seg.push(b);
+    }
+  }
+  if (seg.length >= 2)
+    lines.push(L.polyline(seg, { color: col, weight: 5, opacity: .85, lineJoin: 'round' }));
+  return lines;
+}
+
+// ── Surface overlay ────────────────────────────────────────────────────
+// Twee dataformaten ondersteund:
+//   • Oud: array van 0/1 (verhard/onverhard), 1:1 geïndexeerd op routePts
+//   • Nieuw: array van [lat, lon, unpaved] (zelf-bevattend, density-onafhankelijk)
+function buildSurfaceLines(surf) {
+  if (!surf.length) return [];
+  const selfContained = Array.isArray(surf[0]);
+  const coordAt = i => selfContained ? [surf[i][0], surf[i][1]] : (routePts[i] ? [routePts[i][0], routePts[i][1]] : null);
+  const unpavedAt = i => selfContained ? surf[i][2] === 1 : surf[i] === 1;
+  const len = selfContained ? surf.length : Math.min(routePts.length, surf.length);
+
+  const PAVED   = { color: '#2e7d32', weight: 5, opacity: .9, lineJoin: 'round', lineCap: 'round' };
+  const UNPAVED = { color: '#b45309', weight: 5, opacity: .9, dashArray: '8 5', lineJoin: 'round', lineCap: 'round' };
+
+  // Teken aaneengesloten segmenten van beide typen (groen=verhard, bruin gestreept=onverhard)
+  const lines = [];
+  let seg = [], segUnpaved = null;
+  for (let i = 0; i < len; i++) {
+    const pt = coordAt(i);
+    if (!pt) continue;
+    const u = unpavedAt(i);
+    if (segUnpaved === null) { segUnpaved = u; seg = [pt]; }
+    else if (u === segUnpaved) { seg.push(pt); }
+    else {
+      seg.push(pt); // overgangspunt delen → geen gaten
+      if (seg.length >= 2) lines.push(L.polyline(seg, segUnpaved ? UNPAVED : PAVED));
+      seg = [pt]; segUnpaved = u;
+    }
+  }
+  if (seg.length >= 2) lines.push(L.polyline(seg, segUnpaved ? UNPAVED : PAVED));
+  return lines;
+}
+
+function showLegend(html) {
+  const el = document.getElementById('overlay-legend');
+  el.innerHTML = html; el.style.display = 'block';
+}
+function hideLegend() { document.getElementById('overlay-legend').style.display = 'none'; }
+
+function clearOverlay() {
+  if (gradientLayer) { gradientLayer.forEach(l => l.remove()); gradientLayer = null; }
+  if (surfaceLayer)  { surfaceLayer.forEach(l => l.remove());  surfaceLayer  = null; }
+  routeSetStyle({ opacity: .85 });
+  document.getElementById('btn-helling').classList.remove('active');
+  document.getElementById('btn-surface').classList.remove('active');
+  hideLegend();
+}
+
+let gradientPts = null;
+let surfacePts  = null;
+
+// ── Rider Tracks ───────────────────────────────────────────────────────
+const riderTracks = {};
+
+function durStr(ms) {
+  if (!ms || ms < 60000) return '—';
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
+  return h > 0 ? `${h}u ${String(m % 60).padStart(2,'0')}m` : `${m}m`;
+}
+
+function drawHourMarkers(pts) {
+  const markers = [], timed = pts.filter(p => p[2]);
+  if (timed.length < 2) return markers;
+  const t0 = timed[0][2], t1 = timed[timed.length-1][2];
+  for (let t = Math.ceil(t0/3600000)*3600000; t <= t1; t += 3600000) {
+    let best = null, bestDiff = Infinity;
+    for (const p of timed) {
+      const d = Math.abs(p[2] - t);
+      if (d < bestDiff) { bestDiff = d; best = p; }
+    }
+    if (!best || bestDiff > 35*60000) continue;
+    const label = new Date(t).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+    const icon = L.divIcon({ className: 'poi-icon',
+      html: `<div style="background:#fff;border:1.5px solid #2e7d32;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:700;color:#2e7d32;white-space:nowrap;line-height:15px;box-shadow:0 1px 4px rgba(28,38,53,.25)">${label}</div>`,
+      iconAnchor: [0, 8], iconSize: null });
+    markers.push(L.marker([best[0], best[1]], { icon, interactive: false }).addTo(map));
+  }
+  return markers;
+}
+
+function extractStopsFromTrack(pts, current, nowMs) {
+  // Een stop = aaneengesloten periode van ≥45 min waarin de rijder nauwelijks vordert
+  // (gemiddeld < 2,5 km/u). Op snelheid i.p.v. absolute verplaatsing, zodat GPS-drift tijdens
+  // een rust (een paar km verspreid) de stop niet verbergt. Werkt zowel bij een gat in de data
+  // als bij een cluster punten op ~dezelfde plek. De huidige positie telt mee voor lopende stops.
+  const REST_KMH = 2.5, MIN_MS = 45 * 60000;
+  const now = nowMs || Date.now();
+  const seq = pts.filter(p => p[2]).slice();
+  if (current && current.lat) {
+    const last = seq[seq.length - 1];
+    if (!last || now - last[2] > 60000)
+      seq.push([current.lat, current.lon, now, current.km != null ? current.km : (last ? last[3] : 0)]);
+  }
+  const advBetween = (a, b) => (a[3] != null && b[3] != null)
+    ? Math.abs(b[3] - a[3]) : hav([a[0], a[1]], [b[0], b[1]]);
+  const stops = [];
+  let i = 0;
+  while (i < seq.length - 1) {
+    let j = i + 1;
+    while (j < seq.length) {
+      const segHrs = (seq[j][2] - seq[j-1][2]) / 3600000;
+      if (segHrs > 0 && advBetween(seq[j-1], seq[j]) / segHrs >= REST_KMH) break;
+      j++;
+    }
+    const end = j - 1;
+    const dur = seq[end][2] - seq[i][2];
+    if (end > i && dur >= MIN_MS) {
+      stops.push({ lat: seq[i][0], lon: seq[i][1], startMs: seq[i][2], durationMs: dur,
+        ongoing: end === seq.length - 1 && !!(current && current.lat) });
+      i = end;
+    } else { i++; }
+  }
+  return stops;
+}
+
+function makeStopIcon(s) {
+  const dur = durStr(s.durationMs);
+  const time = new Date(s.startMs).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+  const col = s.ongoing ? '#b90a0a' : '#b45309';
+  const sub = s.ongoing ? `staat hier · sinds ${time}` : time;
+  const head = s.ongoing ? `⏸ ${dur}` : dur;
+  return L.divIcon({ className: 'poi-icon',
+    html: `<div style="background:#fff;border:2px solid ${col};border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;color:${col};white-space:nowrap;line-height:16px;box-shadow:0 2px 6px rgba(28,38,53,.3)">${head}<br><span style="font-weight:400;font-size:10px;opacity:.9">${sub}</span></div>`,
+    iconAnchor: [0, 8], iconSize: null });
+}
+
+function drawStopMarkers(stops) {
+  return stops.map(s => L.marker([s.lat, s.lon], { icon: makeStopIcon(s), interactive: false }).addTo(map));
+}
+
+async function toggleTrack(id) {
+  if (riderTracks[id]) {
+    riderTracks[id].line.remove();
+    riderTracks[id].hourMarkers.forEach(m => m.remove());
+    riderTracks[id].stopMarkers.forEach(m => m.remove());
+    if (riderTracks[id].liveTimer) clearInterval(riderTracks[id].liveTimer);
+    delete riderTracks[id];
+  } else {
+    try {
+      const rd  = riders.find(r => String(r.deviceId) === id);
+      const res = await fetch(`${API}/api/fmc/${RC}/track/${id}`);
+      const pts = await res.json();
+      if (pts.length > 1) {
+        const line = L.polyline(pts.map(p => [p[0], p[1]]), {
+          color: '#2e7d32', weight: 3, opacity: .9, lineJoin: 'round', lineCap: 'round'
+        }).addTo(map);
+        const hourMarkers = drawHourMarkers(pts);
+        const cur = (rd && rd.latitude) ? { lat: rd.latitude, lon: rd.longitude, km: rd.distanceOnTrack } : null;
+        const stops = extractStopsFromTrack(pts, cur, Date.now());
+        const stopMarkers = drawStopMarkers(stops);
+        // Lopende stop: elke minuut de duur live bijwerken zolang de track open staat
+        let liveTimer = null;
+        const oi = stops.findIndex(s => s.ongoing);
+        if (oi >= 0) {
+          const s = stops[oi], mk = stopMarkers[oi];
+          liveTimer = setInterval(() => { s.durationMs = Date.now() - s.startMs; mk.setIcon(makeStopIcon(s)); }, 60000);
+        }
+        riderTracks[id] = { line, hourMarkers, stopMarkers, liveTimer };
+        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
+      }
+    } catch(e) { console.error('Track error:', e); }
+  }
+  updateLabelVisibility();
+  const rd = riders.find(r => String(r.deviceId) === id);
+  if (rd && markerMap[rd.deviceId]) markerMap[rd.deviceId].setPopupContent(popupHtml(rd));
+}
+
+// ── POI Search ─────────────────────────────────────────────────────────
+const POI_COLORS = ['#f59e0b','#38bdf8','#a78bfa','#fb7185','#34d399','#f97316','#e879f9','#facc15'];
+const poiLayers  = {};
+let   poiColorIdx = 0;
+
+function togglePoi() {
+  const body = document.getElementById('poi-body');
+  const open = body.classList.toggle('open');
+  document.getElementById('poi-arrow').textContent = open ? '▾' : '▸';
+  document.getElementById('btn-poi').classList.toggle('active', open);
+}
+
+function togglePoiPanel() { togglePoi(); }
+
+// Snelknop: vul de zoekterm in en zoek direct
+function quickPoi(term) {
+  document.getElementById('poi-input').value = term;
+  searchPoi();
+}
+
+let poiSearching = false;
+async function searchPoi() {
+  const q       = document.getElementById('poi-input').value.trim();
+  const maxdist = document.getElementById('poi-dist').value;
+  const status  = document.getElementById('poi-status');
+  if (!q) return;
+  if (poiSearching) { status.textContent = '⏳ Even wachten — vorige zoekopdracht loopt nog…'; return; }
+  const key = `${q}|${maxdist}km`;
+  if (poiLayers[key]) { status.textContent = 'Al geladen — zie laag hieronder.'; return; }
+  status.textContent = '⏳ Zoeken langs de hele route… (kan ~30 s duren)';
+  poiSearching = true;
+  document.getElementById('poi-btn').disabled = true;
+  try {
+    const res = await fetch(`${API}/api/fmc/${RC}/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const pts  = data.results ?? data;
+    const errs = data.errors ?? [];
+    if (!pts.length && !errs.length) { status.textContent = `Niets gevonden voor "${q}".`; return; }
+    if (pts.length) {
+      const color = POI_COLORS[poiColorIdx++ % POI_COLORS.length];
+      const icon  = L.divIcon({
+        className: 'poi-icon',
+        html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 5px rgba(28,38,53,.25)"></div>`,
+        iconSize: [16,16], iconAnchor: [8,8], popupAnchor: [0,-10]
+      });
+      const markers = pts.map(p => L.marker([p.lat, p.lon], { icon })
+        .addTo(map)
+        .bindPopup(`<b style="color:${color}">${p.name}</b>${p.address ? '<br><small>'+p.address+'</small>' : ''}`));
+      poiLayers[key] = { markers, visible: true, color, label: q, count: pts.length };
+      renderPoiLayers();
+    }
+    status.textContent = pts.length
+      ? `✓ ${pts.length} resultaten${errs.length ? ` (⚠ ${errs.length} zones mislukt)` : ''}`
+      : `⚠ Alle zones mislukt — probeer opnieuw`;
+  } catch(e) {
+    status.textContent = `Fout: ${e.message}`;
+  } finally {
+    poiSearching = false;
+    document.getElementById('poi-btn').disabled = false;
+  }
+}
+
+function renderPoiLayers() {
+  document.getElementById('poi-layers').innerHTML = Object.entries(poiLayers).map(([key, l]) => `
+    <div class="poi-layer">
+      <div class="poi-dot" style="background:${l.color};opacity:${l.visible?1:.35}"></div>
+      <span class="poi-lbl">${l.label}</span>
+      <span class="poi-cnt">${l.count}</span>
+      <button class="poi-vis" onclick="togglePoiLayer('${key}')">${l.visible?'👁':'○'}</button>
+      <button class="poi-rm"  onclick="removePoiLayer('${key}')">✕</button>
+    </div>`).join('');
+}
+
+function togglePoiLayer(key) {
+  const l = poiLayers[key]; if (!l) return;
+  l.visible = !l.visible;
+  l.markers.forEach(m => l.visible ? m.addTo(map) : m.remove());
+  renderPoiLayers();
+}
+
+function removePoiLayer(key) {
+  const l = poiLayers[key]; if (!l) return;
+  l.markers.forEach(m => m.remove());
+  delete poiLayers[key];
+  renderPoiLayers();
+}
+
+// ── Results ────────────────────────────────────────────────────────────
+let resultsData = null;
+
+function openResults() {
+  document.getElementById('results-modal').style.display = 'flex';
+  if (!resultsData) return;
+  renderResults();
+}
+function closeResults() { document.getElementById('results-modal').style.display = 'none'; }
+
+function fmtElapsed(secs) {
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+  return `${h}u ${String(m).padStart(2,'0')}m`;
+}
+function fmtGap(secs) {
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+  return h > 0 ? `+${h}u${String(m).padStart(2,'0')}` : `+${m}m`;
+}
+
+function renderResults() {
+  const body = document.getElementById('results-body');
+  const { finishers, nearFinishers, dataNote } = resultsData;
+  if (!finishers?.length) { body.innerHTML = '<div style="padding:20px;color:var(--muted);font-size:12px">Geen resultaten beschikbaar.</div>'; return; }
+
+  const winnerElapsed = finishers[0].elapsed;
+  const posClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+
+  let html = `<div class="res-section-hdr">Finishers (${finishers.length})</div>`;
+  finishers.forEach((f, i) => {
+    const time = i === 0 ? `<span class="res-time">${fmtElapsed(f.elapsed)}</span>`
+                         : `<span class="res-gap">${fmtGap(f.elapsed - winnerElapsed)}</span>`;
+    html += `<div class="res-row">
+      <span class="res-pos ${posClass(i)}">${i + 1}</span>
+      <span class="res-name">${f.name}</span>
+      ${time}
+    </div>`;
+  });
+
+  if (nearFinishers?.length) {
+    html += `<div class="res-section-hdr">Mogelijk gefinisht — data eindigt voor finish (${nearFinishers.length})</div>`;
+    nearFinishers.forEach(f => {
+      const distKm = (f.lastDistToFinish / 1000).toFixed(1);
+      html += `<div class="res-row">
+        <span class="res-pos">—</span>
+        <span class="res-name">${f.name}</span>
+        <span class="res-near">&lt;${distKm}km voor finish</span>
+      </div>`;
+    });
+  }
+
+  html += `<div class="res-note">⚠ Reconstructie op basis van GPS-history. Eerste 6u50 niet opgeslagen — rijafstanden zijn onderschattingen. Laatste datapunt: ${new Date(resultsData.dataEnd).toLocaleString('nl-NL', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' })}.</div>`;
+  body.innerHTML = html;
+}
+
+async function checkResults() {
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/results`);
+    if (!r.ok) return;
+    resultsData = await r.json();
+    document.getElementById('btn-results').style.display = '';
+  } catch(e) {}
+}
+
+// Toon helling/ondergrond-knoppen alleen als de data voor deze race bestaat
+async function checkOverlays() {
+  if (!SLUG) return;
+  const probe = async (file, btnId) => {
+    try {
+      const r = await fetch(`${API}/${SLUG}/${file}`, { method: 'HEAD' });
+      if (r.ok) document.getElementById(btnId).style.display = '';
+    } catch(e) {}
+  };
+  probe('route-gradient.json', 'btn-helling');
+  probe('route-surface.json',  'btn-surface');
+}
+
+// ── Race Flow ──────────────────────────────────────────────────────────
+let rfData = null;
+let rfViewMs = null; // { minMs, maxMs } — null = alles
+
+// Geef elke rijder een eigen, onderscheidende kleur over het hele spectrum (gulden hoek),
+// en Laurens ten Dam altijd felroze (met dikkere lijn) zodat hij meteen opvalt.
+function assignRfColors(riders) {
+  let h = 0;
+  for (const r of riders) {
+    if (/laurens/i.test(r.name) && /\bdam\b/i.test(r.name)) {
+      r.color = '#ff1aa8'; r._lau = true;
+    } else {
+      r.color = `hsl(${Math.round((h * 137.508) % 360)}, 75%, 47%)`;
+      r._lau = false;
+      h++;
+    }
+  }
+}
+
+function openRaceFlow() {
+  document.getElementById('raceflow-modal').style.display = 'flex';
+  loadRaceFlow();
+}
+function closeRaceFlow() { document.getElementById('raceflow-modal').style.display = 'none'; }
+
+async function loadRaceFlow() {
+  const count  = document.getElementById('rf-count').value;
+  const status = document.getElementById('raceflow-status');
+  const legend = document.getElementById('raceflow-legend');
+  status.textContent = '⏳ Laden (trackleaders raceflow)…'; legend.innerHTML = '';
+  try {
+    // TESTVERSIE: race flow uit trackleaders' eigen raceflow-data (schoon, dicht) i.p.v. onze 5-min-history
+    const tf = await fetch(`${API}/api/fmc/${RC}/tlflow`).then(r => r.ok ? r.json() : null);
+    if (!tf || !tf.riders) throw new Error('geen tlflow-data');
+    const totalKm = (routeCum && routeCum.length) ? routeCum[routeCum.length-1] : 4310;
+    const byId = {}; (riders || []).forEach(r => { byId[String(r.deviceId)] = r; });
+    let built = Object.entries(tf.riders).map(([idx, series]) => {
+      const rd = byId[idx]; if (!rd || !series.length) return null;
+      return { id: idx, name: rd.name, color: rd.riderColor || '#888',
+        pts: series.map(([h, km]) => [tf.rstarttime + h * 3600000, km]) };
+    }).filter(Boolean).sort((a, b) => b.pts[b.pts.length-1][1] - a.pts[a.pts.length-1][1]).slice(0, count);
+    rfData = { riders: built, totalKm, raceStart: tf.rstarttime };
+    if (!rfData.riders.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
+    assignRfColors(rfData.riders);
+    status.textContent = '';
+    rfViewMs = null;
+    drawRaceFlowChart(rfData);
+    legend.innerHTML = rfData.riders.map(r =>
+      `<div class="rf-leg-item"><div class="rf-leg-dot" style="background:${r.color}"></div><span style="color:var(--text)">${r.name}</span></div>`
+    ).join('');
+    initRaceFlowInteraction();
+  } catch(e) {
+    status.textContent = `Fout: ${e.message}`;
+  }
+}
+
+function rfSetWindow(hours) {
+  if (!rfData) return;
+  document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  if (!hours) {
+    rfViewMs = null;
+    document.getElementById('rfz-all').classList.add('active');
+  } else {
+    const startMs = rfData.raceStart || RACE_START.getTime();
+    const endMs = Math.max(Date.now(), startMs + 1);
+    rfViewMs = { minMs: endMs - hours * 3600000, maxMs: endMs };
+    const el = document.getElementById('rfz-'+hours+'h');
+    if (el) el.classList.add('active');
+  }
+  drawRaceFlowChart(rfData);
+}
+
+// Tijd onder een x-positie op het scherm (voor zoom-anker op cursor/pinch).
+function rfScreenToMs(clientX) {
+  const canvas = document.getElementById('raceflow-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const padL = 55, padR = 20;
+  const cW = Math.max(1, rect.width - padL - padR);
+  const frac = Math.max(0, Math.min(1, (clientX - rect.left - padL) / cW));
+  const startMs = rfData.raceStart || RACE_START.getTime();
+  const min = rfViewMs ? rfViewMs.minMs : startMs;
+  const max = rfViewMs ? rfViewMs.maxMs : Date.now();
+  return min + frac * (max - min);
+}
+
+// Zoom (alleen tijd-as) rond een ankerpunt; lijndikte blijft gelijk want we hertekenen.
+function rfZoomAt(factor, anchorMs) {
+  if (!rfData) return;
+  const startMs = rfData.raceStart || RACE_START.getTime();
+  const now = Date.now();
+  const curMin = rfViewMs ? rfViewMs.minMs : startMs;
+  const curMax = rfViewMs ? rfViewMs.maxMs : now;
+  if (anchorMs == null) anchorMs = (curMin + curMax) / 2;
+  const fracLeft = (anchorMs - curMin) / Math.max(1, curMax - curMin);
+  let span = (curMax - curMin) * factor;
+  span = Math.max(5 * 60000, Math.min(now - startMs, span)); // tussen 5 min en hele race
+  let newMin = anchorMs - fracLeft * span;
+  let newMax = newMin + span;
+  if (newMin < startMs) { newMin = startMs; newMax = newMin + span; }
+  if (newMax > now)     { newMax = now;     newMin = newMax - span; }
+  newMin = Math.max(startMs, newMin);
+  rfViewMs = (newMax - newMin >= (now - startMs) - 1000) ? null : { minMs: newMin, maxMs: newMax };
+  document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  if (!rfViewMs) document.getElementById('rfz-all').classList.add('active');
+  drawRaceFlowChart(rfData);
+}
+
+function rfZoom(factor) { rfZoomAt(factor, null); }
+
+function rfResetZoom() {
+  rfViewMs = null;
+  document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('rfz-all').classList.add('active');
+  if (rfData) drawRaceFlowChart(rfData);
+}
+
+function initRaceFlowInteraction() {
+  const canvas = document.getElementById('raceflow-canvas');
+  let dragStartX = null, dragViewMs = null;   // pan
+  let pinchDist = null;                        // pinch-zoom
+
+  const viewNow = () => rfViewMs ? { ...rfViewMs }
+    : { minMs: rfData.raceStart || RACE_START.getTime(), maxMs: Date.now() };
+
+  function panTo(clientX) {
+    if (!dragViewMs) return;
+    const W = canvas.offsetWidth, pad = 55 + 20;
+    const span = dragViewMs.maxMs - dragViewMs.minMs;
+    const dx = (dragStartX - clientX) / Math.max(1, W - pad) * span;
+    const startMs = rfData.raceStart || RACE_START.getTime(), now = Date.now();
+    let newMin = dragViewMs.minMs + dx, newMax = dragViewMs.maxMs + dx;
+    if (newMin < startMs) { newMax += startMs - newMin; newMin = startMs; } // schuif mee, niet krimpen
+    if (newMax > now)     { newMin -= newMax - now;     newMax = now; }
+    rfViewMs = { minMs: Math.max(startMs, newMin), maxMs: newMax };
+    document.querySelectorAll('.rf-tb-btn').forEach(b => b.classList.remove('active'));
+    drawRaceFlowChart(rfData);
+  }
+
+  // Muis: wiel = zoom rond cursor, slepen = pan
+  canvas.onwheel = e => { e.preventDefault(); rfZoomAt(e.deltaY > 0 ? 1.25 : 0.8, rfScreenToMs(e.clientX)); };
+  canvas.onmousedown = e => { dragStartX = e.clientX; dragViewMs = viewNow(); canvas.classList.add('dragging'); };
+  canvas.onmousemove = e => { if (dragStartX != null) panTo(e.clientX); };
+  canvas.onmouseup = canvas.onmouseleave = () => { dragStartX = null; canvas.classList.remove('dragging'); };
+
+  // Touch (mobiel): 1 vinger = pan, 2 vingers = pinch-zoom (hertekent → lijndikte blijft gelijk)
+  canvas.ontouchstart = e => {
+    e.preventDefault();
+    if (e.touches.length === 1) { dragStartX = e.touches[0].clientX; dragViewMs = viewNow(); pinchDist = null; }
+    else if (e.touches.length >= 2) {
+      const [a, b] = e.touches;
+      pinchDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      dragStartX = null;
+    }
+  };
+  canvas.ontouchmove = e => {
+    e.preventDefault();
+    if (e.touches.length >= 2 && pinchDist) {
+      const [a, b] = e.touches;
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const center = (a.clientX + b.clientX) / 2;
+      if (d > 0) { rfZoomAt(pinchDist / d, rfScreenToMs(center)); pinchDist = d; } // uit elkaar → inzoomen
+    } else if (e.touches.length === 1 && dragStartX != null) {
+      panTo(e.touches[0].clientX);
+    }
+  };
+  canvas.ontouchend = e => {
+    if (e.touches.length === 0) { dragStartX = null; pinchDist = null; }
+    else if (e.touches.length === 1) { dragStartX = e.touches[0].clientX; dragViewMs = viewNow(); pinchDist = null; }
+  };
+}
+
+function drawRaceFlowChart({ riders, totalKm, raceStart }) {
+  const canvas = document.getElementById('raceflow-canvas');
+  const W = canvas.offsetWidth || 700;
+  canvas.width  = W;
+  canvas.height = 380;
+  const ctx = canvas.getContext('2d');
+  const pad = { top: 20, right: 20, bottom: 45, left: 55 };
+  const cW  = W - pad.left - pad.right;
+  const cH  = canvas.height - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, canvas.height);
+
+  const now      = Date.now();
+  const startMs  = raceStart || RACE_START.getTime();
+  const viewMinMs = rfViewMs ? rfViewMs.minMs : startMs;
+  const viewMaxMs = rfViewMs ? rfViewMs.maxMs : Math.max(now, startMs + 3600000);
+  const spanH     = (viewMaxMs - viewMinMs) / 3600000;
+  // Y-as auto-zoomt op het zichtbare datatbereik (laagste t/m hoogste gereden afstand) met
+  // wat marge — net als de officiële tracker — i.p.v. 0→totale routelengte, zodat de lijnen
+  // het hele vlak vullen en leesbaar zijn (leider bovenin).
+  const visibleKms = riders.flatMap(r => r.pts.filter(([t]) => t >= viewMinMs && t <= viewMaxMs).map(p => p[1]));
+  const allKms  = visibleKms.length ? visibleKms : riders.flatMap(r => r.pts.map(p => p[1]));
+  const dataMax = allKms.length ? Math.max(...allKms) : 1;
+  const dataMin = allKms.length ? Math.min(...allKms) : 0;
+  const margin  = Math.max(1, dataMax - dataMin) * 0.08;
+  const viewMinKm = Math.max(0, dataMin - margin);
+  const viewMaxKm = dataMax + margin;
+
+  const xS = t  => pad.left + (t - viewMinMs) / (viewMaxMs - viewMinMs) * cW;
+  const yS = km => pad.top  + (1 - (km - viewMinKm) / (viewMaxKm - viewMinKm)) * cH;
+
+  ctx.strokeStyle = '#e3d4ac'; ctx.lineWidth = 1;
+  const hStep = spanH > 24 ? 6 : spanH > 12 ? 4 : spanH > 6 ? 2 : 1;
+  const startH = Math.ceil((viewMinMs - startMs) / 3600000);
+  const endH   = Math.floor((viewMaxMs - startMs) / 3600000);
+  for (let h = startH; h <= endH; h += hStep) {
+    const x = xS(startMs + h * 3600000);
+    if (x < pad.left || x > pad.left + cW) continue;
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + cH); ctx.stroke();
+    ctx.fillStyle = '#6b7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`+${h}u`, x, pad.top + cH + 14);
+  }
+  const kmRange = viewMaxKm - viewMinKm;
+  const kmStep = kmRange > 400 ? 100 : kmRange > 200 ? 50 : kmRange > 80 ? 25 : kmRange > 40 ? 10 : 5;
+  for (let km = Math.ceil(viewMinKm / kmStep) * kmStep; km <= viewMaxKm; km += kmStep) {
+    const y = yS(km);
+    if (y < pad.top || y > pad.top + cH + 2) continue;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cW, y); ctx.stroke();
+    ctx.fillStyle = '#6b7280'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(`${km} km`, pad.left - 6, y + 4);
+  }
+
+  ctx.strokeStyle = '#1c2635'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + cH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.left, pad.top + cH); ctx.lineTo(pad.left + cW, pad.top + cH); ctx.stroke();
+
+  // Clip to chart area
+  ctx.save();
+  ctx.rect(pad.left, pad.top, cW, cH);
+  ctx.clip();
+
+  // Laurens als laatste tekenen zodat zijn felroze lijn bovenop ligt
+  const drawOrder = [...riders].sort((a, b) => (a._lau ? 1 : 0) - (b._lau ? 1 : 0));
+  for (const r of drawOrder) {
+    if (r.pts.length < 2) continue;
+    ctx.strokeStyle = r.color || '#888';
+    ctx.lineWidth   = r._lau ? 4 : 2.5;
+    ctx.lineJoin    = 'round';
+    ctx.beginPath();
+    let started = false;
+    for (const [t, km] of r.pts) {
+      if (t < viewMinMs - 3600000 || t > viewMaxMs + 3600000) continue;
+      const x = xS(t), y = yS(km);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore(); // end clip
+}
+
+// ── Route Ranking ──────────────────────────────────────────────────────
+let riderHistoryCache   = null;
+let routeRankingMode    = false;
+let routeRankingFilter  = 'all';
+let selectedRouteMarker = null;
+let lastClickedKm       = null;
+let labelsVisible       = true;
+let finishersCollapsed  = false;
+
+async function toggleRouteRanking() {
+  routeRankingMode = !routeRankingMode;
+  document.getElementById('btn-route-rank').classList.toggle('active', routeRankingMode);
+  if (routeRankingMode) {
+    document.getElementById('route-rank-panel').style.display = 'flex';
+    map.getContainer().classList.add('map-crosshair');
+    try {  // altijd verse history bij openen (anders verouderde doortijden)
+      const r = await fetch(`${API}/api/fmc/${RC}/history`);
+      if (r.ok) riderHistoryCache = await r.json();
+    } catch(e) { console.warn('History load failed:', e.message); }
+  } else {
+    closeRouteRanking();
+  }
+}
+
+function closeRouteRanking() {
+  routeRankingMode = false;
+  document.getElementById('btn-route-rank').classList.remove('active');
+  document.getElementById('route-rank-panel').style.display = 'none';
+  map.getContainer().classList.remove('map-crosshair');
+  if (selectedRouteMarker) { selectedRouteMarker.remove(); selectedRouteMarker = null; }
+  lastClickedKm = null;
+}
+
+function setRRFilter(f) {
+  routeRankingFilter = f;
+  ['all','top10','top25'].forEach(id =>
+    document.getElementById('rrpf-' + id).classList.toggle('active', id === f)
+  );
+  if (lastClickedKm !== null) showRouteRanking(lastClickedKm);
+}
+
+function nearestRoutePt(lat, lon) {
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i = 0; i < routePts.length; i++) {
+    const d = hav([lat, lon], routePts[i]);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+  return { idx: bestIdx, km: routeCum[bestIdx], dist: bestDist };
+}
+
+function showRouteRanking(clickedKm) {
+  lastClickedKm = clickedKm;
+  const elapsed = Date.now() - RACE_START.getTime();
+
+  const passed = riders
+    .filter(r => !r.scratched && (r.distanceOnTrack || 0) >= clickedKm && r.distanceOnTrack > 0)
+    .map(r => {
+      const id    = String(r.deviceId);
+      const rHist = riderHistoryCache?.[id];
+      let estMs, isActual = false;
+
+      if (rHist && rHist.length >= 1) {
+        for (let i = 0; i < rHist.length; i++) {
+          if (rHist[i][0] >= clickedKm) {
+            if (i === 0) {
+              estMs = rHist[0][1] - RACE_START.getTime();
+            } else {
+              const [km0, t0] = rHist[i - 1], [km1, t1] = rHist[i];
+              const frac = km1 > km0 ? (clickedKm - km0) / (km1 - km0) : 0;
+              estMs = (t0 + frac * (t1 - t0)) - RACE_START.getTime();
+            }
+            isActual = true;
+            break;
+          }
+        }
+      }
+      if (!isActual) estMs = (clickedKm / r.distanceOnTrack) * elapsed;
+
+      const estTime = new Date(RACE_START.getTime() + estMs);
+      return { ...r, estMs, estTime, isActual };
+    })
+    .sort((a, b) => a.estMs - b.estMs);
+
+  const limit = routeRankingFilter === 'top10' ? 10
+              : routeRankingFilter === 'top25' ? 25
+              : Infinity;
+  const shown = passed.slice(0, limit);
+  const hasActual = shown.some(r => r.isActual);
+
+  document.getElementById('rrp-km').textContent =
+    `Km ${clickedKm.toFixed(1)} · ${passed.length} rijder${passed.length !== 1 ? 's' : ''} gepasseerd${hasActual ? '' : ' (schatting)'}`;
+
+  const el = document.getElementById('rrp-list');
+  if (shown.length === 0) {
+    el.innerHTML = '<div class="rrp-empty">Nog geen rijders gepasseerd op dit punt</div>';
+    return;
+  }
+  const leadMs = passed[0].estMs; // snelste doortijd op dit punt
+  el.innerHTML = shown.map((r, i) => `
+    <div class="rrp-row">
+      <span class="rrp-rank">${i + 1}</span>
+      <span class="rrp-dot" style="background:${r.riderColor || '#888'}"></span>
+      <span class="rrp-name">${r.name}</span>
+      <span class="rrp-gap" title="Achterstand op snelste hier">${r.estMs - leadMs < 30000 ? 'leider' : '+' + fmtDur(r.estMs - leadMs)}</span>
+      <span class="rrp-time" title="${r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
+    </div>`).join('');
+}
+
+async function toggleGradient() {
+  const btn = document.getElementById('btn-helling');
+  const wasActive = btn.classList.contains('active');
+  clearOverlay();
+  if (wasActive) return;
+  if (!SLUG) return;
+
+  btn.textContent = '⛰ Laden…';
+  try {
+    if (!gradientPts) {
+      const r = await fetch(`${API}/${SLUG}/route-gradient.json`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      gradientPts = await r.json();
+    }
+    const lines = buildGradientLines(gradientPts);
+    gradientLayer = lines;
+    lines.forEach(l => l.addTo(map));
+    routeSetStyle({ opacity: 0 });
+    btn.classList.add('active');
+    showLegend(`
+      <div class="leg-row"><span class="leg-swatch" style="background:#1e3a8a"></span> Steil dal (&lt; -8%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#2563eb"></span> Afdaling (-8 tot -4%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#93c5fd"></span> Lichte afdaling (-4 tot -1.5%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#4ade80"></span> Vlak (-1.5 tot 1.5%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#fde047"></span> Lichte klim (1.5–4%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#f97316"></span> Klim (4–8%)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#ef4444"></span> Steil (&gt; 8%)</div>`);
+  } catch(e) {
+    console.error('Gradient:', e); clearOverlay();
+  }
+  btn.textContent = '⛰ Helling';
+}
+
+async function toggleSurface() {
+  const btn = document.getElementById('btn-surface');
+  const wasActive = btn.classList.contains('active');
+  clearOverlay();
+  if (wasActive) return;
+  if (!SLUG) return;
+
+  btn.textContent = '🛣 Laden…';
+  try {
+    if (!surfacePts) {
+      const r = await fetch(`${API}/${SLUG}/route-surface.json`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      surfacePts = await r.json();
+    }
+    const lines = buildSurfaceLines(surfacePts);
+    surfaceLayer = lines;
+    lines.forEach(l => l.addTo(map));
+    routeSetStyle({ opacity: 0 });
+    btn.classList.add('active');
+    showLegend(`
+      <div class="leg-row"><span class="leg-swatch" style="background:#2e7d32"></span> Verhard (asfalt/beton)</div>
+      <div class="leg-row"><span class="leg-swatch" style="background:#b45309; border-top: 1px dashed #b45309;"></span> Onverhard (gravel/dirt/gras)</div>`);
+  } catch(e) {
+    console.error('Surface:', e); clearOverlay();
+  }
+  btn.textContent = '🛣 Ondergrond';
+}
+
+function fmtDur(ms) {
+  if (!ms || ms < 0) return '—';
+  const totMin = Math.round(ms / 60000);
+  const d = Math.floor(totMin / 1440);
+  const h = Math.floor((totMin % 1440) / 60);
+  const m = totMin % 60;
+  if (d > 0) return `${d}d ${h}u ${m}m`;
+  if (h > 0) return `${h}u ${m}m`;
+  return `${m}m`;
+}
+
+function popupHtml(rd) {
+  const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+  const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
+  const status   = rd.scratched  ? '<span style="color:#b90a0a">DNF</span>'
+    : finished                   ? '<span style="color:var(--green)">✓ Gefinisht</span>'
+                                 : '<span style="color:var(--green)">Rijdend</span>';
+  const id       = String(rd.deviceId);
+  const hasTrack = !!riderTracks[id];
+  const st       = rd._mstats;
+  // Alleen de totale gemiddelde snelheid (afstand ÷ racetijd) — robuust. Bewegingstijd en
+  // "tijdens fietsen" zijn weggelaten omdat stop-detectie met deze bron onbetrouwbaar is.
+  const statsHtml = st ? `
+    <div class="pu-stats">
+      <div class="pu-stat"><span>🚴 Gem. snelheid</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
+    </div>` : '';
+  const gmaps = (rd.latitude && rd.longitude)
+    ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
+    : null;
+  const btnStyle = 'margin-top:6px;width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;display:block;text-align:center;text-decoration:none;box-sizing:border-box';
+  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
+    <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
+    ${statsHtml}
+    <button class="pu-track-btn${hasTrack ? ' active' : ''}" style="${btnStyle};background:var(--surface2);color:${hasTrack?'var(--green)':'var(--muted)'}" onclick="toggleTrack('${id}')">
+      ${hasTrack ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
+    </button>
+    ${gmaps ? `<a href="${gmaps}" target="_blank" rel="noopener" style="${btnStyle};background:var(--surface2);color:var(--navy)">🛰 Bekijk in Google Maps</a>` : ''}`;
+}
+
+// ── Leaderboard ────────────────────────────────────────────────────────
+let filterText = '';
+function filterList() {
+  filterText = document.getElementById('search').value.toLowerCase();
+  renderList();
+}
+
+function renderList() {
+  const sorted   = [...riders].sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0));
+  const filtered = filterText ? sorted.filter(r => r.name.toLowerCase().includes(filterText)) : sorted;
+  const el       = document.getElementById('rider-list');
+  el.innerHTML   = '';
+
+  function makeRow(rd, rank, badge, extraClass) {
+    const row = document.createElement('div');
+    row.className = 'rider-row' + (extraClass ? ' ' + extraClass : '');
+    const rankTxt = (rank != null && rank !== '') ? rank : '';
+    row.innerHTML = `
+      <span class="r-rank">${rankTxt}</span>
+      <span class="r-dot" style="background:${rd.riderColor || '#888'}"></span>
+      <div class="r-info">
+        <div class="r-name">${rd.name}</div>
+        <div class="r-meta">${badge}</div>
+      </div>`;
+    row.addEventListener('click', () => {
+      const m = markerMap[rd.deviceId];
+      if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
+    });
+    return row;
+  }
+
+  if (filterText) {
+    let rank = 0;
+    for (const rd of filtered) {
+      const fin = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
+      if (!rd.scratched) rank++;
+      const km  = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+      const badge = rd.scratched ? '<span class="r-scratch">DNF</span>'
+        : fin ? '<span class="r-fin">✓ Fin</span>'
+               : `<span class="r-km">${km} km</span>`;
+      el.appendChild(makeRow(rd, rd.scratched ? '' : rank, badge, rd.scratched ? 'scratched-row' : ''));
+    }
+    return;
+  }
+
+  const finishers = filtered.filter(r => !r.scratched && (r.distanceOnTrack || 0) >= finishKm - 0.5);
+  const active    = filtered.filter(r => !r.scratched && (r.distanceOnTrack || 0) <  finishKm - 0.5);
+  const dnf       = filtered.filter(r =>  r.scratched);
+
+  const withTimes = finishers.map(r => {
+    const hist = riderHistoryCache?.[String(r.deviceId)];
+    let finTs = null;
+    if (hist) for (const [km, ts] of hist) { if (km >= finishKm - 0.5) { finTs = ts; break; } }
+    return { r, finTs };
+  }).sort((a, b) => {
+    if (a.finTs && b.finTs) return a.finTs - b.finTs;
+    if (a.finTs) return -1;
+    if (b.finTs) return 1;
+    return (b.r.distanceOnTrack || 0) - (a.r.distanceOnTrack || 0);
+  });
+
+  const firstFinTs = withTimes[0]?.finTs ?? null;
+
+  if (withTimes.length > 0) {
+    const hdr = document.createElement('div');
+    hdr.className = 'section-hdr';
+    hdr.innerHTML = `<span>🏆 Gefinisht (${withTimes.length})</span><button class="section-collapse" onclick="toggleFinishers()">${finishersCollapsed ? '▸' : '▾'}</button>`;
+    el.appendChild(hdr);
+
+    if (!finishersCollapsed) {
+      withTimes.forEach(({ r, finTs }, i) => {
+        let badge;
+        if (finTs) {
+          if (i === 0) {
+            const t = new Date(finTs).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+            badge = `<span class="r-fin">${t}</span>`;
+          } else {
+            badge = `<span class="r-fin" style="color:var(--muted)">+${durStr(finTs - firstFinTs)}</span>`;
+          }
+        } else {
+          badge = `<span class="r-fin">✓ Fin</span>`;
+        }
+        el.appendChild(makeRow(r, i + 1, badge, ''));
+      });
+    }
+  }
+
+  if (active.length > 0) {
+    const hdr = document.createElement('div');
+    hdr.className = 'section-hdr';
+    hdr.innerHTML = `<span>Nog onderweg (${active.length})</span>`;
+    el.appendChild(hdr);
+    const startRank = withTimes.length + 1;
+    active.forEach((rd, i) => {
+      const d = rd.distanceOnTrack || 0;
+      const km = d > 0 ? d.toFixed(0) : '—';
+      const remain = (finishKm !== Infinity && d > 0) ? Math.max(0, finishKm - d) : null;
+      const badge = `<span class="r-km">${km} km</span>` +
+        (remain != null ? `<span style="color:var(--muted)">${remain.toFixed(0)} te gaan</span>` : '');
+      el.appendChild(makeRow(rd, startRank + i, badge, ''));
+    });
+  }
+
+  if (dnf.length > 0) {
+    dnf.forEach(rd => {
+      el.appendChild(makeRow(rd, '', '<span class="r-scratch">DNF</span>', 'scratched-row'));
+    });
+  }
+}
+
+// ── Countdown ──────────────────────────────────────────────────────────
+function startCountdown() {
+  cdSecs = INTERVAL;
+  clearInterval(cdTimer);
+  cdTimer = setInterval(() => {
+    cdSecs--;
+    const m = Math.floor(cdSecs / 60), s = cdSecs % 60;
+    document.getElementById('refresh-bar').textContent = `↺ ${m}:${String(s).padStart(2,'0')}`;
+    if (cdSecs <= 0) { clearInterval(cdTimer); loadPositions().then(startCountdown); }
+  }, 1000);
+}
+
+// ── Fly to leader ─────────────────────────────────────────
+// Plaats de leider op ~25% vanaf de onderkant van het scherm (laag in beeld), met het
+// veld erboven. Zoom 12 houdt de start (noord) buiten beeld.
+function setViewLeaderLow(latlng, zoom) {
+  map.setView(latlng, zoom, { animate: false });
+  const pt = map.project(latlng, zoom);
+  pt.y -= map.getSize().y * 0.25;   // centrum boven de leider → leider zakt naar ~25% van onderen
+  map.setView(map.unproject(pt, zoom), zoom, { animate: false });
+}
+
+// ── Record-ghosts (historische winnaars, op hun werkelijke tempo) ────────
+let ghostData = null;
+const ghostMarkers = {};
+async function loadGhosts() {
+  if (!SLUG) return;
+  try { const r = await fetch(`${API}/${SLUG}/ghosts.json`); if (r.ok) ghostData = await r.json(); } catch(e) {}
+  updateGhosts();
+}
+function ghostKmAt(pts, hrs) {              // interpoleer km op verstreken uren; null = al gefinisht
+  if (!pts || !pts.length) return null;
+  if (hrs <= pts[0][0]) return 0;
+  if (hrs >= pts[pts.length-1][0]) return null;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i][0] >= hrs) { const [h0,k0]=pts[i-1],[h1,k1]=pts[i]; return k0 + (hrs-h0)/((h1-h0)||1)*(k1-k0); }
+  }
+  return null;
+}
+function routePointAtKm(km) {               // route-km → [lat,lon] op dit jaar's route
+  if (!routePts.length || routeCum.length < 2) return null;
+  const total = routeCum[routeCum.length-1];
+  if (km <= 0) return routePts[0];
+  if (km >= total) return routePts[routePts.length-1];
+  let lo = 0, hi = routeCum.length - 1;
+  while (lo < hi) { const mid = (lo+hi)>>1; if (routeCum[mid] < km) lo = mid+1; else hi = mid; }
+  const i = Math.max(1, lo), f = (km - routeCum[i-1]) / ((routeCum[i]-routeCum[i-1])||1);
+  const a = routePts[i-1], b = routePts[i];
+  return [a[0]+f*(b[0]-a[0]), a[1]+f*(b[1]-a[1])];
+}
+function updateGhosts() {
+  if (!ghostData || !raceConfig || !routePts.length) return;
+  const startRef = new Date(raceConfig.officialStart || raceConfig.start).getTime();
+  const hrs = (Date.now() - startRef) / 3600000;
+  for (const g of ghostData) {
+    const km = hrs < 0 ? 0 : ghostKmAt(g.points, hrs);
+    const ex = ghostMarkers[g.label];
+    if (km == null) { if (ex) { ex.remove(); delete ghostMarkers[g.label]; } continue; } // gefinisht
+    const pt = routePointAtKm(km); if (!pt) continue;
+    if (ex) { ex.setLatLng(pt); ex._km = km; }
+    else {
+      const icon = L.divIcon({ className: 'ghost-icon',
+        html: `<div class="ghost-sq" style="background:${g.color}"></div><div class="ghost-lbl" style="color:${g.color}">${g.label}</div>`,
+        iconSize: null, iconAnchor: [7, 7] });
+      const mk = L.marker(pt, { icon, zIndexOffset: 600 }).addTo(map);
+      mk._km = km;
+      mk.bindPopup(() => `<div class="pu-name" style="color:${g.color}">${g.name}</div><div class="pu-meta">${g.label} · recordtempo · ${Math.round(mk._km)} km</div>`);
+      ghostMarkers[g.label] = mk;
+    }
+  }
+}
+
+function flyToLeader() {
+  const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
+                       .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
+  if (leader) setViewLeaderLow([leader.latitude, leader.longitude], 12);
+}
+
+// ── Volledig scherm (Fullscreen API + CSS-fallback voor iOS Safari) ──────
+let cssFsActive = false;
+function inFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement || cssFsActive);
+}
+function afterFsChange() {
+  const on = inFullscreen();
+  document.getElementById('map-fs-close').style.display = on ? '' : 'none';
+  document.getElementById('btn-fullscreen').classList.toggle('active', on);
+  setTimeout(() => map.invalidateSize(), 120);
+}
+function toggleFullscreen() {
+  const el = document.getElementById('map');
+  if (inFullscreen()) {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    }
+    if (cssFsActive) { el.classList.remove('map-fullscreen'); cssFsActive = false; afterFsChange(); }
+  } else {
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) {
+      Promise.resolve(req.call(el)).catch(() => { el.classList.add('map-fullscreen'); cssFsActive = true; afterFsChange(); });
+    } else {
+      el.classList.add('map-fullscreen'); cssFsActive = true; afterFsChange();
+    }
+  }
+}
+document.addEventListener('fullscreenchange', afterFsChange);
+document.addEventListener('webkitfullscreenchange', afterFsChange);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && cssFsActive) toggleFullscreen(); });
+
+// ── Race-klok rechtsboven: racetijd + NL- en lokale tijd ───
+let raceClockTimer = null;
+function startRaceClock() {
+  if (!raceConfig) return;
+  const box = document.getElementById('race-clock');
+  const startRef = new Date(raceConfig.officialStart || raceConfig.start).getTime();
+  const localTz  = raceConfig.localTz || null;
+  const nlFmt  = new Intl.DateTimeFormat('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
+  const locFmt = localTz ? new Intl.DateTimeFormat('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone: localTz }) : null;
+  document.getElementById('rc-local-row').style.display = localTz ? '' : 'none';
+  if (localTz) document.getElementById('rc-local-lbl').textContent = raceConfig.localTzLabel || '';
+  box.style.display = '';
+  function tick() {
+    const now  = Date.now();
+    const diff = now - startRef;
+    const abs  = Math.abs(diff);
+    const s = Math.floor(abs / 1000);
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    const dur = `${d}d ${String(h).padStart(2,'0')}u ${String(m).padStart(2,'0')}m`;
+    document.getElementById('rc-timer').textContent = diff < 0 ? '-' + dur : dur;
+    document.getElementById('rc-label').textContent = diff < 0 ? 'tot start' : 'racetijd';
+    document.getElementById('rc-nl').textContent = nlFmt.format(now);
+    if (locFmt) document.getElementById('rc-local').textContent = locFmt.format(now);
+    if (++tickN % 15 === 0) updateGhosts();   // ghosts ~elke 15s mee laten bewegen met de tijd
+  }
+  let tickN = 0;
+  tick();
+  clearInterval(raceClockTimer);
+  raceClockTimer = setInterval(tick, 1000);
+}
+
+// Vlieg naar Laurens ten Dam (alleen Tour Divide)
+function flyToLau() {
+  const r = riders.find(x => /laurens/i.test(x.name) && /\bdam\b/i.test(x.name));
+  if (!r) return;
+  const m = markerMap[String(r.deviceId)];
+  if (m) { map.setView(m.getLatLng(), 13); m.openPopup(); }
+  else if (r.latitude && r.longitude) { map.setView([r.latitude, r.longitude], 13); }
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('collapsed', !sidebarOpen);
+  setTimeout(() => map.invalidateSize(), 220);
+}
+
+document.getElementById('poi-input').addEventListener('keydown', e => { if (e.key === 'Enter') searchPoi(); });
+
+// ── Route tabs ─────────────────────────────────────────────
+let activeTab = 0;
+let allRiders = []; // unfiltered positions
+
+function initTabs() {
+  const tabs = raceConfig?.tabs;
+  if (!tabs?.length) return;
+  const el = document.getElementById('route-tabs');
+  el.style.display = 'flex';
+  el.innerHTML = tabs.map((t, i) =>
+    `<button class="tab-btn${i===0?' active':''}" onclick="switchTab(${i})">${t.label}</button>`
+  ).join('');
+}
+
+async function switchTab(idx) {
+  if (idx === activeTab && routeLayer) return;
+  activeTab = idx;
+  const tabs = raceConfig.tabs;
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  // Load new route
+  raceConfig.routeFile = tabs[idx].routeFile;
+  if (routeLayer) routeLayer.forEach(l => l.remove());
+  routeLayer = null; routePts = []; routeCum = []; finishKm = Infinity;
+  gradientLayer = null; surfaceLayer = null;
+  await loadRoute();
+  // Filter riders by segment
+  applyTabFilter();
+}
+
+function applyTabFilter() {
+  const tabs = raceConfig?.tabs;
+  if (!tabs?.length || !allRiders.length) return;
+  const segs = tabs[activeTab].segments;
+  riders = segs ? allRiders.filter(r => segs.includes(r.segment)) : allRiders;
+  renderMarkers();
+  updateLabelVisibility();
+  renderList();
+  mapCentered = false; // re-center on new tab's leader
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+async function init() {
+  initMap();
+  if (!RC) {
+    document.getElementById('race-title').textContent = 'Geen race geselecteerd';
+    document.getElementById('status-txt').textContent = 'Gebruik ?race=fmc-code in de URL';
+    return;
+  }
+  try {
+    const r = await fetch(`${API}/api/fmc/${RC}/config`);
+    if (r.ok) {
+      raceConfig = await r.json();
+      SLUG       = raceConfig.slug || '';
+      RACE_START = new Date(raceConfig.officialStart || raceConfig.start); // anker voor doortijden/schattingen
+      document.title = `${raceConfig.name} — Bomba Tracker`;
+      document.getElementById('race-title').textContent = raceConfig.name;
+    }
+  } catch(e) { console.warn('Config load failed:', e.message); }
+  // Lau-knop alleen voor Tour Divide
+  if (RC === 'tourdivide26') document.getElementById('btn-lau').style.display = '';
+  initTabs();
+  checkResults();
+  checkOverlays();
+  startRaceClock();
+  loadRoute().then(loadGhosts);
+  loadPositions().then(startCountdown);
+}
+init();
+</script>
+</body>
+</html>
