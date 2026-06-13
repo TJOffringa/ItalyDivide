@@ -152,6 +152,9 @@
       border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
       pointer-events: none;
     }
+    .stop-icon { white-space: nowrap; }
+    .stop-icon .stop-dot { position: absolute; left: 0; top: 0; width: 13px; height: 13px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(28,38,53,.45); }
+    .stop-icon .stop-box { display: inline-block; margin-left: 17px; background: #fff; border: 2px solid; border-radius: 4px; padding: 3px 7px; font-size: 11px; font-weight: 700; line-height: 16px; box-shadow: 0 2px 6px rgba(28,38,53,.3); }
     .ghost-icon { background: none; border: none; }
     .ghost-icon .ghost-sq { width: 15px; height: 15px; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(28,38,53,.6); }
     .ghost-icon .ghost-lbl { position: absolute; left: 19px; top: -2px; font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
@@ -940,12 +943,12 @@ function drawHourMarkers(pts) {
   return markers;
 }
 
-function extractStopsFromTrack(pts, current, nowMs) {
-  // Een stop = aaneengesloten periode van ≥45 min waarin de rijder nauwelijks vordert
+function extractStopsFromTrack(pts, current, nowMs, minMs) {
+  // Een stop = aaneengesloten periode van ≥minMs waarin de rijder nauwelijks vordert
   // (gemiddeld < 2,5 km/u). Op snelheid i.p.v. absolute verplaatsing, zodat GPS-drift tijdens
   // een rust (een paar km verspreid) de stop niet verbergt. Werkt zowel bij een gat in de data
   // als bij een cluster punten op ~dezelfde plek. De huidige positie telt mee voor lopende stops.
-  const REST_KMH = 2.5, MIN_MS = 45 * 60000;
+  const REST_KMH = 2.5, MIN_MS = minMs || 45 * 60000;
   const now = nowMs || Date.now();
   const seq = pts.filter(p => p[2]).slice();
   if (current && current.lat) {
@@ -981,9 +984,9 @@ function makeStopIcon(s) {
   const col = s.ongoing ? '#b90a0a' : s.estimated ? '#8a6a1e' : '#b45309';
   const sub = s.ongoing ? `staat hier · sinds ${time}` : s.estimated ? `geschat (datagat) · ${time}` : time;
   const head = s.ongoing ? `⏸ Stop · ${dur}` : s.estimated ? `~ Stop · ${dur}` : `Stop · ${dur}`;
-  return L.divIcon({ className: 'poi-icon',
-    html: `<div style="background:#fff;border:2px solid ${col};border-radius:4px;padding:3px 7px;font-size:11px;font-weight:700;color:${col};white-space:nowrap;line-height:16px;box-shadow:0 2px 6px rgba(28,38,53,.3)">${head}<br><span style="font-weight:400;font-size:10px;opacity:.9">${sub}</span></div>`,
-    iconAnchor: [0, 8], iconSize: null });
+  return L.divIcon({ className: 'stop-icon',
+    html: `<div class="stop-dot" style="background:${col}"></div><div class="stop-box" style="border-color:${col};color:${col}">${head}<br><span style="font-weight:400;font-size:10px;opacity:.9">${sub}</span></div>`,
+    iconAnchor: [6, 6], iconSize: null });
 }
 
 function drawStopMarkers(stops) {
@@ -992,7 +995,6 @@ function drawStopMarkers(stops) {
 
 async function toggleTrack(id) {
   if (riderTracks[id]) {
-    riderTracks[id].line.remove();
     riderTracks[id].hourMarkers.forEach(m => m.remove());
     riderTracks[id].stopMarkers.forEach(m => m.remove());
     if (riderTracks[id].liveTimer) clearInterval(riderTracks[id].liveTimer);
@@ -1002,13 +1004,20 @@ async function toggleTrack(id) {
       const rd  = riders.find(r => String(r.deviceId) === id);
       const res = await fetch(`${API}/api/fmc/${RC}/track/${id}`);
       const pts = await res.json();
+      if (!tlflowData) { try { const r = await fetch(`${API}/api/fmc/${RC}/tlflow`); if (r.ok) tlflowData = await r.json(); } catch(e) {} }
       if (pts.length > 1) {
-        const line = L.polyline(pts.map(p => [p[0], p[1]]), {
-          color: '#2e7d32', weight: 3, opacity: .9, lineJoin: 'round', lineCap: 'round'
-        }).addTo(map);
         const hourMarkers = drawHourMarkers(pts);
         const cur = (rd && rd.latitude) ? { lat: rd.latitude, lon: rd.longitude, km: rd.distanceOnTrack } : null;
-        const stops = extractStopsFromTrack(pts, cur, Date.now());
+        // Stops: voor de leiders (in trackleaders raceflow) een lagere drempel (20 min) op de
+        // schone race-flow-km; voor de rest GPS-history met 45 min.
+        const tlSeries = tlflowData?.riders?.[id];
+        let stops;
+        if (tlSeries && tlflowData.rstarttime) {
+          const tlTrack = tlSeries.map(([h, km]) => { const pt = routePointAtKm(km) || [0,0]; return [pt[0], pt[1], tlflowData.rstarttime + h*3600000, km]; });
+          stops = extractStopsFromTrack(tlTrack, cur, Date.now(), 20*60000);
+        } else {
+          stops = extractStopsFromTrack(pts, cur, Date.now());
+        }
         const stopMarkers = drawStopMarkers(stops);
         // Lopende stop: elke minuut de duur live bijwerken zolang de track open staat
         let liveTimer = null;
@@ -1017,12 +1026,11 @@ async function toggleTrack(id) {
           const s = stops[oi], mk = stopMarkers[oi];
           liveTimer = setInterval(() => { s.durationMs = Date.now() - s.startMs; mk.setIcon(makeStopIcon(s)); }, 60000);
         }
-        riderTracks[id] = { line, hourMarkers, stopMarkers, liveTimer };
-        // Bolletje meteen op het verste (=verste) trackpunt zetten, zodat het samenvalt met
-        // de gereden route (de track is vers opgehaald; de marker kan tot ~5 min ouder zijn)
+        riderTracks[id] = { hourMarkers, stopMarkers, liveTimer };
+        // Bolletje meteen op het verste trackpunt zetten (track is vers; marker kan ~5 min ouder zijn)
         const tip = pts[pts.length - 1];
         if (tip && markerMap[id]) markerMap[id].setLatLng([tip[0], tip[1]]);
-        map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 14 });
+        // Geen fitBounds: scherm/zoom hetzelfde houden
       }
     } catch(e) { console.error('Track error:', e); }
   }
@@ -1890,7 +1898,6 @@ const ghostTracks = {};
 function toggleGhostTrack(gi) {
   const g = ghostData[gi];
   if (ghostTracks[gi]) {
-    ghostTracks[gi].line.remove();
     ghostTracks[gi].stops.forEach(m => m.remove());
     ghostTracks[gi].hourMarkers.forEach(m => m.remove());
     delete ghostTracks[gi];
@@ -1899,14 +1906,11 @@ function toggleGhostTrack(gi) {
     const hrs = (Date.now() - startRef) / 3600000;
     const last = g.points[g.points.length-1];
     const curKm = hrs >= last[0] ? last[1] : (ghostKmAt(g.points, hrs) ?? last[1]);
-    const seg = [];
-    for (let i = 0; i < routePts.length; i++) { if (routeCum[i] <= curKm) seg.push(routePts[i]); else break; }
-    const line = L.polyline(seg, { color: g.color, weight: 4, opacity: .8, dashArray: '8 6', lineJoin: 'round' }).addTo(map);
-    // pseudo-track [lat,lon,ts,km] uit de tempo-curve → uur-tijdstempels + rustplekken
+    // pseudo-track [lat,lon,ts,km] uit de tempo-curve → uur-tijdstempels + rustplekken (geen lijn)
     const track = g.points.filter(p => p[0] <= hrs + 0.01 && p[1] <= curKm + 1)
       .map(([h, km]) => { const pt = routePointAtKm(km) || [0,0]; return [pt[0], pt[1], startRef + h*3600000, km]; });
     const hourMarkers = drawHourMarkers(track);
-    const stopList = extractStopsFromTrack(track, null, startRef + hrs*3600000);
+    const stopList = extractStopsFromTrack(track, null, startRef + hrs*3600000, 20*60000);
     // Geschatte rust in datagaten: een lang segment (>60 min) met een matig gemiddelde
     // (2,5–14 km/u) bevat verborgen rust. Duur ≈ gat − (km ÷ 16 km/u rijtempo).
     const RIDE_KMH = 16;
@@ -1922,7 +1926,7 @@ function toggleGhostTrack(gi) {
       stopList.push({ lat: track[i-1][0], lon: track[i-1][1], startMs: track[i-1][2], durationMs: restMs, estimated: true });
     }
     const stops = drawStopMarkers(stopList);
-    ghostTracks[gi] = { line, stops, hourMarkers };
+    ghostTracks[gi] = { stops, hourMarkers };
   }
   const mk = ghostMarkers[gi];
   if (mk && mk.getPopup()) mk.getPopup().update();  // popup-knop verversen (functie-content)
