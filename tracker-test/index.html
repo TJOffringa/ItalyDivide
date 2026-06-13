@@ -643,8 +643,7 @@ async function loadRoute() {
         const lines = geom.type === 'MultiLineString' ? geom.coordinates : [geom.coordinates];
         for (const line of lines) for (const c of line) pts.push([parseFloat(c[1]), parseFloat(c[0])]);
       }
-      const step = Math.max(1, Math.floor(pts.length / 2000));
-      routePts = pts.filter((_, i) => i % step === 0);
+      routePts = pts;  // volledige resolutie: de cumulatieve km moet exact matchen met server-distanceOnTrack (anders snijdt sampling bochten af → km-schaal te kort)
     } else {
       // Komoot route: load via API server (avoids GitHub Pages path prefix issues)
       const [rr, sr] = await Promise.all([
