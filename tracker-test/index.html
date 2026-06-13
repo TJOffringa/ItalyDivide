@@ -1455,6 +1455,10 @@ async function toggleRouteRanking() {
       const r = await fetch(`${API}/api/fmc/${RC}/history`);
       if (r.ok) riderHistoryCache = await r.json();
     } catch(e) { console.warn('History load failed:', e.message); }
+    try {  // TESTVERSIE: trackleaders raceflow voor exacte doortijden van de leiders
+      const r = await fetch(`${API}/api/fmc/${RC}/tlflow`);
+      if (r.ok) tlflowData = await r.json();
+    } catch(e) { console.warn('tlflow load failed:', e.message); }
   } else {
     closeRouteRanking();
   }
@@ -1486,6 +1490,19 @@ function nearestRoutePt(lat, lon) {
   return { idx: bestIdx, km: routeCum[bestIdx], dist: bestDist };
 }
 
+let tlflowData = null;
+function tlflowHrsAtKm(series, km) {   // verstreken uren waarop deze rijder km bereikte
+  if (!series || !series.length || km > series[series.length-1][1]) return null;
+  if (km <= series[0][1]) return series[0][0];
+  for (let i = 1; i < series.length; i++) {
+    if (series[i][1] >= km) {
+      const [h0,k0] = series[i-1], [h1,k1] = series[i];
+      return h0 + (k1 > k0 ? (km - k0) / (k1 - k0) : 0) * (h1 - h0);
+    }
+  }
+  return null;
+}
+
 function showRouteRanking(clickedKm) {
   lastClickedKm = clickedKm;
   const elapsed = Date.now() - RACE_START.getTime();
@@ -1495,9 +1512,15 @@ function showRouteRanking(clickedKm) {
     .map(r => {
       const id    = String(r.deviceId);
       const rHist = riderHistoryCache?.[id];
-      let estMs, isActual = false;
+      let estMs, isActual = false, src = '';
 
-      if (rHist && rHist.length >= 1) {
+      // TESTVERSIE: exacte doortijd uit trackleaders raceflow indien beschikbaar (leiders)
+      const tlSeries = tlflowData?.riders?.[id];
+      const tlHrs = (tlSeries && tlflowData.rstarttime) ? tlflowHrsAtKm(tlSeries, clickedKm) : null;
+      if (tlHrs != null) {
+        estMs = (tlflowData.rstarttime + tlHrs * 3600000) - RACE_START.getTime();
+        isActual = true; src = 'tl';
+      } else if (rHist && rHist.length >= 1) {
         for (let i = 0; i < rHist.length; i++) {
           if (rHist[i][0] >= clickedKm) {
             if (i === 0) {
@@ -1515,7 +1538,7 @@ function showRouteRanking(clickedKm) {
       if (!isActual) estMs = (clickedKm / r.distanceOnTrack) * elapsed;
 
       const estTime = new Date(RACE_START.getTime() + estMs);
-      return { ...r, estMs, estTime, isActual };
+      return { ...r, estMs, estTime, isActual, src };
     })
     .sort((a, b) => a.estMs - b.estMs);
 
@@ -1540,7 +1563,7 @@ function showRouteRanking(clickedKm) {
       <span class="rrp-dot" style="background:${r.riderColor || '#888'}"></span>
       <span class="rrp-name">${r.name}</span>
       <span class="rrp-gap" title="Achterstand op snelste hier">${r.estMs - leadMs < 30000 ? 'leider' : '+' + fmtDur(r.estMs - leadMs)}</span>
-      <span class="rrp-time" title="${r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
+      <span class="rrp-time" title="${r.src === 'tl' ? 'Exacte doortijd (trackleaders raceflow)' : r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.src === 'tl' ? '◆ ' : r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
     </div>`).join('');
 }
 
