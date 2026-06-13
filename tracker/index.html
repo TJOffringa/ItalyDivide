@@ -257,7 +257,8 @@
     .rrp-rank { font-size: 10px; color: var(--muted); width: 18px; text-align: right; flex-shrink: 0; }
     .rrp-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .rrp-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .rrp-time { font-size: 10px; color: var(--teal); flex-shrink: 0; font-weight: 600; }
+    .rrp-gap  { font-size: 10px; color: var(--muted); flex-shrink: 0; min-width: 54px; text-align: right; }
+    .rrp-time { font-size: 10px; color: var(--teal); flex-shrink: 0; font-weight: 600; min-width: 36px; text-align: right; }
     .rrp-empty { padding: 20px 12px; font-size: 12px; color: var(--muted); text-align: center; }
     @media (max-width: 640px) {
       #route-rank-panel { top: auto; bottom: 40px; left: 4px; right: 4px; width: auto; max-height: 50vh; }
@@ -1510,11 +1511,13 @@ function showRouteRanking(clickedKm) {
     el.innerHTML = '<div class="rrp-empty">Nog geen rijders gepasseerd op dit punt</div>';
     return;
   }
+  const leadMs = passed[0].estMs; // snelste doortijd op dit punt
   el.innerHTML = shown.map((r, i) => `
     <div class="rrp-row">
       <span class="rrp-rank">${i + 1}</span>
       <span class="rrp-dot" style="background:${r.riderColor || '#888'}"></span>
       <span class="rrp-name">${r.name}</span>
+      <span class="rrp-gap" title="Achterstand op snelste hier">${r.estMs - leadMs < 30000 ? 'leider' : '+' + fmtDur(r.estMs - leadMs)}</span>
       <span class="rrp-time" title="${r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
     </div>`).join('');
 }
