@@ -1690,6 +1690,7 @@ function popupHtml(rd) {
   const statsHtml = st ? `
     <div class="pu-stats">
       <div class="pu-stat"><span>🚴 Gem. snelheid</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
+      ${st.currentKmh != null ? `<div class="pu-stat"><span>⚡ Actuele snelheid</span><b>${st.currentKmh.toFixed(1)} km/u</b></div>` : ''}
     </div>` : '';
   const gmaps = (rd.latitude && rd.longitude)
     ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
