@@ -1221,10 +1221,18 @@ async function loadRaceFlow() {
   const legend = document.getElementById('raceflow-legend');
   status.textContent = '⏳ Laden…'; legend.innerHTML = '';
   try {
-    const res = await fetch(`${API}/api/fmc/${RC}/raceflow?count=${count}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    rfData = await res.json();
-    if (!rfData.riders?.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
+    // Bron: trackleaders' eigen raceflow (schoon, dicht) voor de kopgroep
+    const tf = await fetch(`${API}/api/fmc/${RC}/tlflow`).then(r => r.ok ? r.json() : null);
+    if (!tf || !tf.riders) throw new Error('geen raceflow-data');
+    const totalKm = (routeCum && routeCum.length) ? routeCum[routeCum.length-1] : 4310;
+    const byId = {}; (riders || []).forEach(r => { byId[String(r.deviceId)] = r; });
+    const built = Object.entries(tf.riders).map(([idx, series]) => {
+      const rd = byId[idx]; if (!rd || !series.length) return null;
+      return { id: idx, name: rd.name, color: rd.riderColor || '#888',
+        pts: series.map(([h, km]) => [tf.rstarttime + h * 3600000, km]) };
+    }).filter(Boolean).sort((a, b) => b.pts[b.pts.length-1][1] - a.pts[a.pts.length-1][1]).slice(0, count);
+    rfData = { riders: built, totalKm, raceStart: tf.rstarttime };
+    if (!rfData.riders.length) { status.textContent = 'Nog geen data beschikbaar.'; return; }
     assignRfColors(rfData.riders);
     // Record-ghosts als gestippelde referentielijnen toevoegen (eigen kleur/label behouden)
     if (ghostData && rfData.raceStart) {
@@ -1446,6 +1454,7 @@ function drawRaceFlowChart({ riders, totalKm, raceStart }) {
 
 // ── Route Ranking ──────────────────────────────────────────────────────
 let riderHistoryCache   = null;
+let tlflowData          = null;   // trackleaders raceflow (exacte doortijden leiders)
 let routeRankingMode    = false;
 let routeRankingFilter  = 'all';
 let selectedRouteMarker = null;
@@ -1463,6 +1472,10 @@ async function toggleRouteRanking() {
       const r = await fetch(`${API}/api/fmc/${RC}/history`);
       if (r.ok) riderHistoryCache = await r.json();
     } catch(e) { console.warn('History load failed:', e.message); }
+    try {  // trackleaders raceflow voor exacte doortijden van de leiders
+      const r = await fetch(`${API}/api/fmc/${RC}/tlflow`);
+      if (r.ok) tlflowData = await r.json();
+    } catch(e) { console.warn('tlflow load failed:', e.message); }
   } else {
     closeRouteRanking();
   }
@@ -1512,9 +1525,15 @@ function showRouteRanking(clickedKm) {
     .map(r => {
       const id    = String(r.deviceId);
       const rHist = riderHistoryCache?.[id];
-      let estMs, isActual = false;
+      let estMs, isActual = false, src = '';
 
-      if (rHist && rHist.length >= 1) {
+      // Exacte doortijd uit trackleaders raceflow indien beschikbaar (leiders)
+      const tlSeries = tlflowData?.riders?.[id];
+      const tlHrs = (tlSeries && tlflowData.rstarttime) ? ghostHrsAtKm(tlSeries, clickedKm) : null;
+      if (tlHrs != null) {
+        estMs = (tlflowData.rstarttime + tlHrs * 3600000) - RACE_START.getTime();
+        isActual = true; src = 'tl';
+      } else if (rHist && rHist.length >= 1) {
         for (let i = 0; i < rHist.length; i++) {
           if (rHist[i][0] >= clickedKm) {
             if (i === 0) {
@@ -1532,7 +1551,7 @@ function showRouteRanking(clickedKm) {
       if (!isActual) estMs = (clickedKm / r.distanceOnTrack) * elapsed;
 
       const estTime = new Date(RACE_START.getTime() + estMs);
-      return { ...r, estMs, estTime, isActual };
+      return { ...r, estMs, estTime, isActual, src };
     });
 
   // Record-ghosts toevoegen: wanneer was de recordhouder op deze km?
@@ -1568,7 +1587,7 @@ function showRouteRanking(clickedKm) {
       <span class="rrp-dot" style="background:${r.riderColor || '#888'}${r.ghost ? ';border-radius:1px;width:10px;height:10px' : ''}"></span>
       <span class="rrp-name">${r.ghost ? '◆ ' : ''}${r.name}</span>
       <span class="rrp-gap" title="Achterstand op snelste hier">${r.estMs - leadMs < 30000 ? 'leider' : '+' + fmtDur(r.estMs - leadMs)}</span>
-      <span class="rrp-time" title="${r.ghost ? 'Doortijd recordhouder' : r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
+      <span class="rrp-time" title="${r.ghost ? 'Doortijd recordhouder' : r.src === 'tl' ? 'Exacte doortijd (trackleaders raceflow)' : r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.src === 'tl' ? '◆ ' : r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
     </div>`).join('');
 }
 
