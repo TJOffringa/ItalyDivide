@@ -992,7 +992,7 @@ async function searchPoi() {
   if (!q) return;
   const key = `${q}|${maxdist}km`;
   if (poiLayers[key]) { status.textContent = 'Al geladen — zie laag hieronder.'; return; }
-  status.textContent = '⏳ Zoeken…';
+  status.textContent = '⏳ Zoeken langs de hele route… (kan ~30 s duren)';
   document.getElementById('poi-btn').disabled = true;
   try {
     const res = await fetch(`${API}/api/fmc/${RC}/poi?q=${encodeURIComponent(q)}&maxdist=${maxdist}`);
