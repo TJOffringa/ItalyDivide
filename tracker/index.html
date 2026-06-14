@@ -124,6 +124,16 @@
     #search:focus { outline: none; border-color: var(--teal); }
     #search::placeholder { color: var(--muted); }
 
+    /* ── Geslacht-toggle (klassement: iedereen / vrouwen) ── */
+    #gender-toggle { display: flex; gap: 4px; padding: 0 12px 8px; flex-shrink: 0; }
+    .gt-btn {
+      flex: 1; font-size: 11px; font-weight: 600; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+      transition: color .12s, background .12s, border-color .12s;
+    }
+    .gt-btn:hover { color: var(--text); border-color: var(--muted); }
+    .gt-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); }
+
     /* ── Rider list ── */
     #rider-list { flex: 1; overflow-y: auto; }
     .rider-row {
@@ -458,7 +468,8 @@
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 Afstand tot punt</button>
-        <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
+        <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader('M')" title="Vlieg naar de leider">🥇 Leider</button>
+        <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">🥇 Leidster ♀</button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
@@ -499,6 +510,11 @@
 
       <div id="search-wrap">
         <input id="search" type="text" placeholder="Zoek rijder…" oninput="filterList()">
+      </div>
+
+      <div id="gender-toggle" style="display:none">
+        <button class="gt-btn active" id="gt-all"   onclick="setGenderFilter('all')">Iedereen</button>
+        <button class="gt-btn"        id="gt-women" onclick="setGenderFilter('F')">Vrouwen ♀</button>
       </div>
 
       <div id="rider-list"></div>
@@ -1734,13 +1750,30 @@ function popupHtml(rd) {
 
 // ── Leaderboard ────────────────────────────────────────────────────────
 let filterText = '';
+let genderFilter = 'all';   // 'all' = iedereen (incl. vrouwen) | 'F' = alleen vrouwen
 function filterList() {
   filterText = document.getElementById('search').value.toLowerCase();
   renderList();
 }
+function setGenderFilter(g) {
+  genderFilter = g;
+  document.getElementById('gt-all').classList.toggle('active', g === 'all');
+  document.getElementById('gt-women').classList.toggle('active', g === 'F');
+  renderList();
+}
+// Toon de geslacht-knoppen (klassement-toggle + leidster) alleen als de bron
+// geslacht meelevert en er daadwerkelijk vrouwen in het veld zitten.
+function updateGenderUI() {
+  const hasWomen = riders.some(r => r.gender === 'F');
+  document.getElementById('gender-toggle').style.display  = hasWomen ? 'flex' : 'none';
+  document.getElementById('btn-leader-w').style.display   = hasWomen ? '' : 'none';
+  if (!hasWomen && genderFilter !== 'all') setGenderFilter('all');
+}
 
 function renderList() {
-  const sorted   = [...riders].sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0));
+  updateGenderUI();
+  const base     = genderFilter === 'F' ? riders.filter(r => r.gender === 'F') : riders;
+  const sorted   = [...base].sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0));
   const filtered = filterText ? sorted.filter(r => r.name.toLowerCase().includes(filterText)) : sorted;
   const el       = document.getElementById('rider-list');
   el.innerHTML   = '';
@@ -1977,9 +2010,11 @@ function toggleGhostTrack(gi) {
   if (mk && mk.getPopup()) mk.getPopup().update();  // popup-knop verversen (functie-content)
 }
 
-function flyToLeader() {
-  const leader = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
-                       .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
+// gender: 'F' → leidster bij de vrouwen; anders de algemene leider (vooraan in de race).
+function flyToLeader(gender) {
+  let pool = riders.filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0);
+  if (gender === 'F') pool = pool.filter(r => r.gender === 'F');
+  const leader = pool.sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
   if (leader) setViewLeaderLow([leader.latitude, leader.longitude], 12);
 }
 
