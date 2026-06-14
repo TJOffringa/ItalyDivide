@@ -1023,6 +1023,11 @@ async function toggleTrack(id) {
         } else {
           stops = extractStopsFromTrack(pts, cur, Date.now());
         }
+        // Lopende stop op de werkelijke huidige positie (= het bolletje) zetten; de raceflow-km
+        // kan iets vóór de GPS-positie liggen, waardoor de stop anders verderop zou staan.
+        const tip0 = pts[pts.length - 1];
+        const oiS = stops.findIndex(s => s.ongoing);
+        if (oiS >= 0 && tip0) { stops[oiS].lat = tip0[0]; stops[oiS].lon = tip0[1]; }
         const stopMarkers = drawStopMarkers(stops);
         // Lopende stop: elke minuut de duur live bijwerken zolang de track open staat
         let liveTimer = null;
