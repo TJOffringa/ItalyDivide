@@ -380,16 +380,16 @@
     }
 
     /* ── Race Flow modal ── */
-    #raceflow-modal {
+    #raceflow-modal, .chart-modal {
       position: fixed; inset: 0; z-index: 2000;
       background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center;
     }
-    #raceflow-inner {
+    #raceflow-inner, .chart-inner {
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
       width: min(95vw, 760px); max-height: 90vh; display: flex; flex-direction: column;
       overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.7);
     }
-    #raceflow-hdr {
+    #raceflow-hdr, .chart-hdr {
       display: flex; align-items: center; justify-content: space-between;
       padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
       font-family: var(--display); font-size: 18px; font-weight: normal; letter-spacing: .03em; color: var(--navy);
@@ -398,14 +398,16 @@
       background: var(--surface2); border: 1px solid var(--border);
       color: var(--muted); font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer;
     }
-    #raceflow-close {
+    #raceflow-close, .chart-close {
       background: none; border: none; color: var(--muted); font-size: 18px;
       cursor: pointer; padding: 0 4px; line-height: 1;
     }
-    #raceflow-close:hover { color: var(--text); }
-    #raceflow-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; touch-action: none; }
-    #raceflow-canvas.dragging { cursor: grabbing; }
-    #raceflow-toolbar {
+    #raceflow-close:hover, .chart-close:hover { color: var(--text); }
+    #raceflow-canvas, #elev-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; touch-action: none; }
+    #raceflow-canvas.dragging, #elev-canvas.dragging { cursor: grabbing; }
+    #ep-readout { margin-left: auto; font-size: 11px; color: var(--text); font-weight: 600; }
+    #ep-status { padding: 8px 16px; font-size: 12px; color: var(--muted); text-align: center; }
+    #raceflow-toolbar, .chart-toolbar {
       display: flex; align-items: center; gap: 6px;
       padding: 6px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
@@ -415,7 +417,8 @@
     }
     .rf-tb-btn:hover, .rf-tb-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 700; }
     .rf-tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
-    #rf-zoom-hint { font-size: 10px; color: var(--muted); margin-left: auto; }
+    #rf-zoom-hint, .chart-hint { font-size: 10px; color: var(--muted); }
+    #rf-zoom-hint { margin-left: auto; }
     #raceflow-legend {
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 8px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
@@ -473,6 +476,7 @@
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
+        <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel" style="display:none">📈 Hoogteprofiel</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 Ondergrond</button>
         <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ Scherm</button>
       </div>
@@ -587,6 +591,25 @@
     <canvas id="raceflow-canvas" height="380"></canvas>
     <div id="raceflow-legend"></div>
     <div id="raceflow-status"></div>
+  </div>
+</div>
+
+<div id="elev-modal" class="chart-modal" style="display:none" onclick="if(event.target===this)closeElevProfile()">
+  <div class="chart-inner">
+    <div class="chart-hdr">
+      <span>📈 Hoogteprofiel</span>
+      <button class="chart-close" onclick="closeElevProfile()">✕</button>
+    </div>
+    <div class="chart-toolbar">
+      <button class="rf-tb-btn active" id="epz-all" onclick="epResetZoom()">Alles</button>
+      <div class="rf-tb-sep"></div>
+      <button class="rf-tb-btn" onclick="epZoom(0.7)">＋</button>
+      <button class="rf-tb-btn" onclick="epZoom(1.43)">－</button>
+      <span class="chart-hint">scroll = zoom · sleep = pan</span>
+      <span id="ep-readout"></span>
+    </div>
+    <canvas id="elev-canvas" height="360"></canvas>
+    <div id="ep-status"></div>
   </div>
 </div>
 
@@ -921,11 +944,210 @@ function clearOverlay() {
   routeSetStyle({ opacity: .85 });
   document.getElementById('btn-helling').classList.remove('active');
   document.getElementById('btn-surface').classList.remove('active');
+  // Hoogteprofiel-knop hoort bij de helling-overlay → verbergen en popup sluiten
+  document.getElementById('btn-profiel').style.display = 'none';
+  closeElevProfile();
   hideLegend();
 }
 
 let gradientPts = null;
 let surfacePts  = null;
+
+// ── Hoogteprofiel (popup, zoombaar) ─────────────────────────────────────
+// Hergebruikt de gradient-data ([lat,lon,hoogte]). Knop verschijnt alleen als
+// de helling-overlay actief is (zie toggleGradient/clearOverlay).
+let elevProfile = null;       // {dist:[km], ele:[m], total, minE, maxE}
+let epView = [0, 0];          // zichtbaar [km0, km1]
+let epHoverPx = null;         // muis-x (canvas-coord) voor crosshair; null = uit
+let epInited = false;
+const EP_PADL = 48, EP_PADR = 14;
+
+function buildElevProfile(gradPts) {
+  const dist = [0];
+  let cum = 0;
+  for (let i = 1; i < gradPts.length; i++) {
+    cum += hav([gradPts[i-1][0], gradPts[i-1][1]], [gradPts[i][0], gradPts[i][1]]);
+    dist.push(cum);
+  }
+  // hoogtes licht smoothen tegen ruis (zelfde venster als de helling-kleuring)
+  const ele = gradPts.map((p, i) => {
+    const s = Math.max(0, i - 2), e = Math.min(gradPts.length - 1, i + 2);
+    let sum = 0, n = 0; for (let j = s; j <= e; j++) { sum += gradPts[j][2]; n++; }
+    return sum / n;
+  });
+  let minE = Infinity, maxE = -Infinity;
+  for (const e of ele) { if (e < minE) minE = e; if (e > maxE) maxE = e; }
+  return { dist, ele, total: cum, minE, maxE };
+}
+
+async function openElevProfile() {
+  if (!SLUG) return;
+  try {
+    if (!gradientPts) {
+      const r = await fetch(`${API}/${SLUG}/route-gradient.json`);
+      if (r.ok) gradientPts = await r.json();
+    }
+  } catch(e) {}
+  if (!gradientPts) return;
+  if (!elevProfile) elevProfile = buildElevProfile(gradientPts);
+  epView = [0, elevProfile.total];
+  document.getElementById('epz-all').classList.add('active');
+  document.getElementById('elev-modal').style.display = 'flex';
+  initElevInteraction();
+  requestAnimationFrame(drawElevProfile);
+}
+function closeElevProfile() { document.getElementById('elev-modal').style.display = 'none'; }
+
+// Nette as-stapgrootte (1/2/5 × 10ⁿ) voor ~target labels over een bereik.
+function epNiceStep(range, target) {
+  const raw = Math.max(1e-6, range) / target;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / pow;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * pow;
+}
+
+function drawElevProfile() {
+  const cv = document.getElementById('elev-canvas');
+  if (!cv || !elevProfile) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) { requestAnimationFrame(drawElevProfile); return; }
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const { dist, ele, minE, maxE } = elevProfile;
+  const padT = 12, padB = 28;
+  const plotW = W - EP_PADL - EP_PADR, plotH = H - padT - padB;
+  let [km0, km1] = epView;
+  if (km1 - km0 < 0.5) km1 = km0 + 0.5;
+  const eMargin = (maxE - minE) * 0.06 || 10;
+  const yMin = minE - eMargin, yMax = maxE + eMargin;
+  const xToPx = km => EP_PADL + (km - km0) / (km1 - km0) * plotW;
+  const yToPx = e  => padT + (1 - (e - yMin) / ((yMax - yMin) || 1)) * plotH;
+
+  ctx.font = '10px -apple-system, Segoe UI, sans-serif';
+  // y-gridlines + hoogtelabels
+  const yStep = epNiceStep(yMax - yMin, 5);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+  for (let e = Math.ceil(yMin / yStep) * yStep; e <= yMax; e += yStep) {
+    const y = yToPx(e);
+    ctx.strokeStyle = 'rgba(0,0,0,.08)';
+    ctx.beginPath(); ctx.moveTo(EP_PADL, y); ctx.lineTo(W - EP_PADR, y); ctx.stroke();
+    ctx.fillStyle = '#6b7280'; ctx.fillText(Math.round(e) + ' m', EP_PADL - 5, y);
+  }
+  // x-gridlines + km-labels
+  const xStep = epNiceStep(km1 - km0, 6);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let k = Math.ceil(km0 / xStep) * xStep; k <= km1; k += xStep) {
+    const x = xToPx(k);
+    ctx.strokeStyle = 'rgba(0,0,0,.06)';
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+    ctx.fillStyle = '#6b7280'; ctx.fillText(Math.round(k) + ' km', x, padT + plotH + 6);
+  }
+
+  // zichtbare index-range (binary search op cumulatieve afstand)
+  const idxAtKm = km => { let lo = 0, hi = dist.length - 1; while (lo < hi) { const m = (lo+hi)>>1; if (dist[m] < km) lo = m+1; else hi = m; } return lo; };
+  const i0 = Math.max(0, idxAtKm(km0) - 1);
+  const i1 = Math.min(dist.length - 1, idxAtKm(km1) + 1);
+
+  // gevulde area onder de curve
+  ctx.beginPath();
+  ctx.moveTo(xToPx(dist[i0]), padT + plotH);
+  for (let i = i0; i <= i1; i++) ctx.lineTo(xToPx(dist[i]), yToPx(ele[i]));
+  ctx.lineTo(xToPx(dist[i1]), padT + plotH);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(20,184,166,.12)'; ctx.fill();
+
+  // lijn gekleurd naar hellingshoek (zelfde palet als de helling-overlay)
+  ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (let i = i0; i < i1; i++) {
+    const dKm = dist[i+1] - dist[i];
+    const grad = dKm > 0.02 ? (ele[i+1] - ele[i]) / (dKm * 10) : 0;
+    ctx.strokeStyle = gradColor(grad);
+    ctx.beginPath(); ctx.moveTo(xToPx(dist[i]), yToPx(ele[i])); ctx.lineTo(xToPx(dist[i+1]), yToPx(ele[i+1])); ctx.stroke();
+  }
+
+  // crosshair + uitlezing
+  const ro = document.getElementById('ep-readout');
+  if (epHoverPx != null && epHoverPx >= EP_PADL && epHoverPx <= W - EP_PADR) {
+    const km = km0 + (epHoverPx - EP_PADL) / plotW * (km1 - km0);
+    const i = idxAtKm(km);
+    const x = xToPx(dist[i]), y = yToPx(ele[i]);
+    ctx.strokeStyle = 'rgba(28,38,53,.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+    ctx.fillStyle = '#1c2635'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    if (ro) ro.textContent = `${Math.round(dist[i])} km · ${Math.round(ele[i])} m`;
+  } else if (ro) { ro.textContent = ''; }
+}
+
+// zoom (afstand-as) rond een km-anker; schaal/labels wijzigen mee
+function epZoomAt(factor, anchorKm) {
+  if (!elevProfile) return;
+  const total = elevProfile.total;
+  const [a, b] = epView;
+  let span = Math.max(0.5, Math.min(total, (b - a) * factor));
+  let na = anchorKm - (anchorKm - a) * (span / (b - a));
+  let nb = na + span;
+  if (na < 0) { nb -= na; na = 0; }
+  if (nb > total) { na -= (nb - total); nb = total; }
+  na = Math.max(0, na);
+  epView = [na, nb];
+  document.getElementById('epz-all').classList.toggle('active', na <= 0.01 && nb >= total - 0.01);
+  drawElevProfile();
+}
+function epScreenToKm(clientX) {
+  const cv = document.getElementById('elev-canvas');
+  const rect = cv.getBoundingClientRect();
+  const plotW = Math.max(1, rect.width - EP_PADL - EP_PADR);
+  const [a, b] = epView;
+  return a + Math.max(0, Math.min(1, (clientX - rect.left - EP_PADL) / plotW)) * (b - a);
+}
+function epZoom(factor) { epZoomAt(factor, (epView[0] + epView[1]) / 2); }
+function epResetZoom() { if (elevProfile) { epView = [0, elevProfile.total]; document.getElementById('epz-all').classList.add('active'); drawElevProfile(); } }
+
+function initElevInteraction() {
+  if (epInited) return;
+  epInited = true;
+  const cv = document.getElementById('elev-canvas');
+  if (!cv) return;
+  let dragX = null, dragView = null, pinch = null;
+  const panTo = clientX => {
+    if (!dragView) return;
+    const plotW = Math.max(1, cv.getBoundingClientRect().width - EP_PADL - EP_PADR);
+    const dKm = (clientX - dragX) / plotW * (dragView[1] - dragView[0]);
+    const total = elevProfile.total, span = dragView[1] - dragView[0];
+    let a = dragView[0] - dKm, b = dragView[1] - dKm;
+    if (a < 0) { a = 0; b = span; }
+    if (b > total) { b = total; a = total - span; }
+    epView = [Math.max(0, a), b];
+    document.getElementById('epz-all').classList.toggle('active', epView[0] <= 0.01 && epView[1] >= total - 0.01);
+    drawElevProfile();
+  };
+  cv.onwheel = e => { e.preventDefault(); epZoomAt(e.deltaY > 0 ? 1.25 : 0.8, epScreenToKm(e.clientX)); };
+  cv.onmousedown = e => { dragX = e.clientX; dragView = [...epView]; cv.classList.add('dragging'); };
+  cv.onmousemove = e => { epHoverPx = e.clientX - cv.getBoundingClientRect().left; if (dragX != null) panTo(e.clientX); else drawElevProfile(); };
+  cv.onmouseleave = () => { epHoverPx = null; dragX = null; cv.classList.remove('dragging'); drawElevProfile(); };
+  window.addEventListener('mouseup', () => { dragX = null; cv.classList.remove('dragging'); });
+  cv.ontouchstart = e => {
+    if (e.touches.length === 1) { dragX = e.touches[0].clientX; dragView = [...epView]; pinch = null; }
+    else if (e.touches.length >= 2) { const [a, b] = e.touches; pinch = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); dragX = null; }
+  };
+  cv.ontouchmove = e => {
+    e.preventDefault();
+    if (e.touches.length >= 2 && pinch) {
+      const [a, b] = e.touches;
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const center = (a.clientX + b.clientX) / 2;
+      if (d > 0) { epZoomAt(pinch / d, epScreenToKm(center)); pinch = d; }
+    } else if (e.touches.length === 1 && dragX != null) { panTo(e.touches[0].clientX); }
+  };
+  cv.ontouchend = e => {
+    if (e.touches.length === 0) { dragX = null; pinch = null; }
+    else if (e.touches.length === 1) { dragX = e.touches[0].clientX; dragView = [...epView]; pinch = null; }
+  };
+}
+window.addEventListener('resize', () => { const m = document.getElementById('elev-modal'); if (m && m.style.display === 'flex') drawElevProfile(); });
 
 // ── Rider Tracks ───────────────────────────────────────────────────────
 const riderTracks = {};
@@ -1666,6 +1888,7 @@ async function toggleGradient() {
     lines.forEach(l => l.addTo(map));
     routeSetStyle({ opacity: 0 });
     btn.classList.add('active');
+    document.getElementById('btn-profiel').style.display = '';   // hoogteprofiel-knop nu beschikbaar
     showLegend(`
       <div class="leg-row"><span class="leg-swatch" style="background:#1e3a8a"></span> Steil dal (&lt; -8%)</div>
       <div class="leg-row"><span class="leg-swatch" style="background:#2563eb"></span> Afdaling (-8 tot -4%)</div>
