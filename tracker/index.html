@@ -470,9 +470,10 @@
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
-        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 Afstand tot punt</button>
+        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 Routeklassement</button>
+        <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 Afstand tot punt</button>
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader('M')" title="Vlieg naar de leider">🥇 Leider</button>
-        <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">🥇 Leidster ♀</button>
+        <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀</button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
@@ -1723,12 +1724,26 @@ let lastClickedKm       = null;
 let labelsVisible       = true;
 let finishersCollapsed  = false;
 
-async function toggleRouteRanking() {
-  routeRankingMode = !routeRankingMode;
-  document.getElementById('btn-route-rank').classList.toggle('active', routeRankingMode);
-  if (routeRankingMode) {
-    document.getElementById('route-rank-panel').style.display = 'flex';
-    map.getContainer().classList.add('map-crosshair');
+function updateRouteRankButtons() {
+  const dt = document.getElementById('btn-route-rank');   // Routeklassement (doortijden)
+  const af = document.getElementById('btn-route-dist');   // Afstand tot punt
+  if (dt) dt.classList.toggle('active', routeRankingMode && rrMode === 'doortijden');
+  if (af) af.classList.toggle('active', routeRankingMode && rrMode === 'afstand');
+}
+
+async function toggleRouteRanking(mode) {
+  mode = mode || 'doortijden';
+  // zelfde knop nogmaals = paneel sluiten; anders openen/omschakelen naar die modus
+  if (routeRankingMode && rrMode === mode) { closeRouteRanking(); return; }
+  const wasOpen = routeRankingMode;
+  routeRankingMode = true;
+  rrMode = mode;
+  updateRouteRankButtons();
+  document.getElementById('rrm-doortijden').classList.toggle('active', mode === 'doortijden');
+  document.getElementById('rrm-afstand').classList.toggle('active', mode === 'afstand');
+  document.getElementById('route-rank-panel').style.display = 'flex';
+  map.getContainer().classList.add('map-crosshair');
+  if (!wasOpen) {
     try {  // altijd verse history bij openen (anders verouderde doortijden)
       const r = await fetch(`${API}/api/fmc/${RC}/history`);
       if (r.ok) riderHistoryCache = await r.json();
@@ -1737,14 +1752,13 @@ async function toggleRouteRanking() {
       const r = await fetch(`${API}/api/fmc/${RC}/tlflow`);
       if (r.ok) tlflowData = await r.json();
     } catch(e) { console.warn('tlflow load failed:', e.message); }
-  } else {
-    closeRouteRanking();
   }
+  if (lastClickedKm !== null) showRouteRanking(lastClickedKm);
 }
 
 function closeRouteRanking() {
   routeRankingMode = false;
-  document.getElementById('btn-route-rank').classList.remove('active');
+  updateRouteRankButtons();
   document.getElementById('route-rank-panel').style.display = 'none';
   map.getContainer().classList.remove('map-crosshair');
   if (selectedRouteMarker) { selectedRouteMarker.remove(); selectedRouteMarker = null; }
@@ -1780,6 +1794,7 @@ function setRRMode(m) {
   rrMode = m;
   document.getElementById('rrm-doortijden').classList.toggle('active', m === 'doortijden');
   document.getElementById('rrm-afstand').classList.toggle('active', m === 'afstand');
+  updateRouteRankButtons();
   if (lastClickedKm !== null) showRouteRanking(lastClickedKm);
 }
 function showRouteRanking(clickedKm) {
