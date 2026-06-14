@@ -1050,6 +1050,23 @@ function ensureElevMap() {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(elevMap);
   if (routePts.length) elevRouteLayer = L.polyline(routePts, { color: '#b90a0a', weight: 3, opacity: .85 }).addTo(elevMap);
   elevRiderLayer = L.layerGroup().addTo(elevMap);
+  // klik op de route → markeer die plek in het hoogteprofiel (via de scrubber)
+  elevMap.on('click', e => {
+    if (!routePts.length) return;
+    const n = nearestRoutePt(e.latlng.lat, e.latlng.lng);
+    const sc = document.getElementById('ep-scrub');
+    if (sc) sc.value = n.km;
+    // als ingezoomd op een ander stuk: profiel verschuiven zodat de plek in beeld komt
+    if (elevProfile && (n.km < epView[0] || n.km > epView[1])) {
+      const span = epView[1] - epView[0], total = elevProfile.total;
+      let a = n.km - span / 2, b = n.km + span / 2;
+      if (a < 0) { a = 0; b = span; }
+      if (b > total) { b = total; a = total - span; }
+      epView = [Math.max(0, a), b];
+      document.getElementById('epz-all').classList.toggle('active', epView[0] <= 0.01 && epView[1] >= total - 0.01);
+    }
+    onScrub(n.km);
+  });
 }
 
 // markeer scrubber-positie op de kaart
