@@ -42,6 +42,10 @@
   .rv-nav { display:flex; justify-content:space-between; margin-top:14px; }
   .rv-nav button { padding:6px 10px; }
   .hint { font-size:11px; color:var(--muted); margin-top:6px; }
+  #add-btn.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .src { font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; color:#fff; }
+  .src.windy { background:#2563eb; } .src.youtube { background:#c0392b; } .src.manual { background:#7c3aed; }
+  .del { color:var(--red); font-size:12px; }
 </style>
 </head>
 <body>
@@ -51,6 +55,7 @@
   <span id="status">laden…</span>
   <span id="progress"></span>
   <span class="sp"></span>
+  <button id="add-btn" onclick="toggleAddMode()">➕ Toevoegen</button>
   <button onclick="scan(true)">↻ Herscan</button>
   <button class="primary" id="save-btn" onclick="save()" disabled>Opslaan op kaart (0)</button>
 </header>
@@ -86,6 +91,7 @@ function updateProgress() {
 async function initMap() {
   map = L.map('map').setView([45, -110], 4);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(map);
+  map.on('click', onMapClick);
   try {
     const r = await fetch(`${API}/${SLUG}/route.json`);
     if (r.ok) { const pts = await r.json(); const line = L.polyline(pts,{color:'#b90a0a',weight:3,opacity:.85}).addTo(map); map.fitBounds(line.getBounds(),{padding:[20,20]}); }
@@ -150,10 +156,13 @@ function renderReview() {
   const loc = [c.city, c.region, c.country].filter(Boolean).join(', ');
   const st = statusOf(c.id);
   const stTxt = st === 'kept' ? '<span class="rv-status kept">✓ op kaart</span>' : st === 'dropped' ? '<span class="rv-status dropped">✕ weggegooid</span>' : '';
+  const srcLbl = { windy:'Windy', youtube:'YouTube', manual:'handmatig' }[c.source] || c.source || '';
   el.innerHTML = `
-    <div><span class="rv-num">${curIdx+1}</span> <span style="font-size:11px;color:var(--muted)">van ${cams.length}</span> &nbsp; ${stTxt}</div>
+    <div><span class="rv-num">${curIdx+1}</span> <span style="font-size:11px;color:var(--muted)">van ${cams.length}</span>
+      ${srcLbl ? `<span class="src ${c.source}">${srcLbl}</span>` : ''} &nbsp; ${stTxt}</div>
     <div class="rv-title">${esc(c.title)}</div>
-    <div class="rv-meta">${esc(loc)}<br>km ${c.routeKm} langs route · ${c.distKm} km van de route${c.status && c.status!=='active' ? ` · <b style="color:var(--red)">${esc(c.status)}</b>` : ''}</div>
+    <div class="rv-meta">${esc(loc)}<br>km ${c.routeKm} langs route · ${c.distKm} km van de route${c.status && c.status!=='active' ? ` · <b style="color:var(--red)">${esc(c.status)}</b>` : ''}
+      ${c.source==='manual' ? ` · <a class="del" href="#" onclick="return delManual('${c.id}')">verwijder</a>` : ''}</div>
     <img class="thumb" src="${c.preview || c.thumbnail || ''}" alt="" onerror="this.style.opacity=.3" title="${c.playerDay ? 'klik = live embed' : 'klik = open live ↗'}" onclick="${c.playerDay ? `embedHere(this)` : `window.open('${c.detailUrl}','_blank')`}">
     <div class="rv-links">
       ${c.detailUrl ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : ''}
@@ -199,10 +208,56 @@ document.addEventListener('keydown', e => {
   else if (e.key.toLowerCase() === 'k') drop();
 });
 
+// ── Handmatig toevoegen (Ovando nest-cam, DOT-pas-cam, directory-cam) ──
+let addMode = false;
+function toggleAddMode() {
+  addMode = !addMode;
+  document.getElementById('add-btn').classList.toggle('on', addMode);
+  map.getContainer().style.cursor = addMode ? 'crosshair' : '';
+  setStatus(addMode ? '➕ Klik op de kaart waar de cam staat…' : '');
+}
+async function onMapClick(e) {
+  if (!addMode) return;
+  const title = prompt('Naam van de cam (bijv. "Ovando nest-cam"):');
+  if (!title) { toggleAddMode(); return; }
+  const url = prompt('URL van de livestream/pagina (optioneel):', '') || '';
+  setStatus('toevoegen…');
+  try {
+    const r = await fetch(`${API}/api/webcams/manual?race=${RACE}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ title, url, lat: e.latlng.lat, lon: e.latlng.lng })
+    });
+    const j = await r.json();
+    if (j.error) { setStatus('⚠ ' + j.error); toggleAddMode(); return; }
+    cams.push(j.added);
+    cams.sort((a,b)=>(a.routeKm||0)-(b.routeKm||0));
+    selected.add(j.added.id);            // handmatig toegevoegd = meteen op kaart
+    placeMarkers();
+    openReview(cams.findIndex(c => c.id === j.added.id));
+    updateProgress();
+    setStatus('✓ toegevoegd en aangevinkt — klik straks "Opslaan op kaart"');
+  } catch(err) { setStatus('⚠ ' + err.message); }
+  toggleAddMode();
+}
+async function delManual(id) {
+  if (!confirm('Deze handmatige cam verwijderen?')) return false;
+  try {
+    await fetch(`${API}/api/webcams/manual?race=${RACE}&id=${encodeURIComponent(id)}`, { method:'DELETE' });
+    selected.delete(id); dropped.delete(id);
+    const i = cams.findIndex(c => c.id === id);
+    if (i >= 0) cams.splice(i, 1);
+    if (markers[id]) { markers[id].remove(); delete markers[id]; }
+    curIdx = Math.min(curIdx, cams.length - 1);
+    renderReview(); updateProgress();
+  } catch(e) { setStatus('⚠ ' + e.message); }
+  return false;
+}
+
 async function save() {
   const payload = [...selected].map(id => {
     const c = cams.find(x => x.id === id) || { id };
-    return { id, title:c.title, lat:c.lat, lon:c.lon, city:c.city, region:c.region, detailUrl:c.detailUrl, note:notes[id]||'' };
+    return { id, source:c.source, title:c.title, lat:c.lat, lon:c.lon, city:c.city, region:c.region, country:c.country,
+      thumbnail:c.thumbnail, detailUrl:c.detailUrl, playerDay:c.playerDay, note:notes[id]||'' };
   });
   setStatus('opslaan…');
   try {
