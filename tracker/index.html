@@ -419,6 +419,16 @@
     .rf-tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
     #rf-zoom-hint, .chart-hint { font-size: 10px; color: var(--muted); }
     #rf-zoom-hint { margin-left: auto; }
+    /* Hoogteprofiel: split-screen (kaart boven, profiel onder) + scrubber */
+    #elev-modal .chart-inner { width: min(96vw, 900px); height: 88vh; }
+    #elev-split { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    #elev-map { flex: 1.15 1 0; min-height: 150px; background: #e8eef2; }
+    #elev-canvas { flex: 1 1 0; }
+    #ep-scrub-row { display: flex; align-items: center; gap: 10px; padding: 7px 16px;
+      border-top: 1px solid var(--border); flex-shrink: 0; }
+    #ep-scrub { flex: 1; accent-color: var(--teal); cursor: pointer; height: 4px; }
+    #ep-scrub-lbl { font-size: 11px; color: var(--teal); font-weight: 700; min-width: 70px; }
+    #ep-scrub-lbl small { color: var(--muted); font-weight: 400; }
     #raceflow-legend {
       display: flex; flex-wrap: wrap; gap: 8px;
       padding: 8px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
@@ -606,10 +616,19 @@
       <div class="rf-tb-sep"></div>
       <button class="rf-tb-btn" onclick="epZoom(0.7)">＋</button>
       <button class="rf-tb-btn" onclick="epZoom(1.43)">－</button>
+      <div class="rf-tb-sep"></div>
+      <button class="rf-tb-btn active" id="ep-riders-btn" onclick="toggleElevRiders()" title="Toon de top 15 op kaart én profiel">👥 Top 15</button>
       <span class="chart-hint">scroll = zoom · sleep = pan</span>
       <span id="ep-readout"></span>
     </div>
-    <canvas id="elev-canvas" height="360"></canvas>
+    <div id="elev-split">
+      <div id="elev-map"></div>
+      <canvas id="elev-canvas" height="360"></canvas>
+      <div id="ep-scrub-row">
+        <span id="ep-scrub-lbl">0 km</span>
+        <input type="range" id="ep-scrub" min="0" max="100" step="0.1" value="0" oninput="onScrub(this.value)" title="Schuif over het profiel — de positie wordt op de kaart geplot">
+      </div>
+    </div>
     <div id="ep-status"></div>
   </div>
 </div>
@@ -834,6 +853,11 @@ function renderMarkers() {
   for (const id of Object.keys(markerMap)) {
     if (!seen.has(id)) { markerMap[id].remove(); delete markerMap[id]; }
   }
+  // hoogteprofiel-popup live meebewegen
+  if (elevMap && document.getElementById('elev-modal').style.display === 'flex') {
+    updateElevMapRiders();
+    drawElevProfile();
+  }
 }
 
 function updateLabelVisibility() {
@@ -962,6 +986,11 @@ let epView = [0, 0];          // zichtbaar [km0, km1]
 let epHoverPx = null;         // muis-x (canvas-coord) voor crosshair; null = uit
 let epInited = false;
 const EP_PADL = 48, EP_PADR = 14;
+// split-screen: tweede kaart, scrubber + rijders
+let elevMap = null, elevRouteLayer = null, elevScrubMarker = null, elevRiderLayer = null;
+let scrubKm = 0;
+let showElevRiders = true;
+const EP_RIDER_N = 15;
 
 function buildElevProfile(gradPts) {
   const dist = [0];
@@ -981,6 +1010,86 @@ function buildElevProfile(gradPts) {
   return { dist, ele, total: cum, minE, maxE };
 }
 
+// km → [lat,lon] op de werkelijke route (zelfde km-schaal als rider-distanceOnTrack)
+function latlonAtKm(km) {
+  if (!routeCum.length) return null;
+  const last = routeCum[routeCum.length - 1];
+  if (km <= 0) return routePts[0];
+  if (km >= last) return routePts[routePts.length - 1];
+  let lo = 0, hi = routeCum.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (routeCum[m] < km) lo = m + 1; else hi = m; }
+  const i = lo, i0 = Math.max(0, i - 1);
+  const k0 = routeCum[i0], k1 = routeCum[i];
+  const f = k1 > k0 ? (km - k0) / (k1 - k0) : 0;
+  return [routePts[i0][0] + f * (routePts[i][0] - routePts[i0][0]),
+          routePts[i0][1] + f * (routePts[i][1] - routePts[i0][1])];
+}
+// hoogte (m) op een km-positie in het profiel — voor het plotten van rijders op de curve
+function eleAtKm(km) {
+  const { dist, ele } = elevProfile;
+  if (km <= dist[0]) return ele[0];
+  if (km >= dist[dist.length - 1]) return ele[ele.length - 1];
+  let lo = 0, hi = dist.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (dist[m] < km) lo = m + 1; else hi = m; }
+  const i = lo, i0 = Math.max(0, i - 1);
+  const k0 = dist[i0], k1 = dist[i];
+  const f = k1 > k0 ? (km - k0) / (k1 - k0) : 0;
+  return ele[i0] + f * (ele[i] - ele[i0]);
+}
+// top-N rijders op afstand (zelfde volgorde als het klassement)
+function topElevRiders() {
+  return riders
+    .filter(r => !r.scratched && r.latitude && r.longitude && r.distanceOnTrack > 0)
+    .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))
+    .slice(0, EP_RIDER_N);
+}
+
+function ensureElevMap() {
+  if (elevMap) return;
+  elevMap = L.map('elev-map', { zoomControl: true, attributionControl: false }).setView([48, 10], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(elevMap);
+  if (routePts.length) elevRouteLayer = L.polyline(routePts, { color: '#b90a0a', weight: 3, opacity: .85 }).addTo(elevMap);
+  elevRiderLayer = L.layerGroup().addTo(elevMap);
+}
+
+// markeer scrubber-positie op de kaart
+function updateScrubMarker() {
+  if (!elevMap) return;
+  const ll = latlonAtKm(scrubKm);
+  if (!ll) return;
+  if (!elevScrubMarker) {
+    elevScrubMarker = L.circleMarker(ll, { radius: 7, color: '#fff', weight: 2, fillColor: '#ffbc00', fillOpacity: 1, pane: 'markerPane' }).addTo(elevMap);
+  } else elevScrubMarker.setLatLng(ll);
+}
+
+// plot top-15 op de kaart
+function updateElevMapRiders() {
+  if (!elevRiderLayer) return;
+  elevRiderLayer.clearLayers();
+  if (!showElevRiders) return;
+  topElevRiders().forEach((r, i) => {
+    L.circleMarker([r.latitude, r.longitude], {
+      radius: 5, color: '#fff', weight: 1.5, fillColor: r.riderColor || '#888', fillOpacity: 1
+    }).bindTooltip(`${i + 1}. ${r.name}`, { direction: 'top' }).addTo(elevRiderLayer);
+  });
+}
+
+function toggleElevRiders() {
+  showElevRiders = !showElevRiders;
+  document.getElementById('ep-riders-btn').classList.toggle('active', showElevRiders);
+  updateElevMapRiders();
+  drawElevProfile();
+}
+
+function onScrub(val) {
+  scrubKm = parseFloat(val) || 0;
+  const ll = latlonAtKm(scrubKm);
+  const lbl = document.getElementById('ep-scrub-lbl');
+  if (lbl) lbl.innerHTML = elevProfile ? `${Math.round(scrubKm)} km <small>· ${Math.round(eleAtKm(scrubKm))} m</small>` : `${Math.round(scrubKm)} km`;
+  updateScrubMarker();
+  drawElevProfile();
+}
+
 async function openElevProfile() {
   if (!SLUG) return;
   try {
@@ -993,8 +1102,22 @@ async function openElevProfile() {
   if (!elevProfile) elevProfile = buildElevProfile(gradientPts);
   epView = [0, elevProfile.total];
   document.getElementById('epz-all').classList.add('active');
+  // scrubber over het hele profiel
+  const sc = document.getElementById('ep-scrub');
+  sc.max = elevProfile.total; sc.value = scrubKm = 0;
+  onScrub(0);
+  document.getElementById('ep-riders-btn').classList.toggle('active', showElevRiders);
   document.getElementById('elev-modal').style.display = 'flex';
+  ensureElevMap();
   initElevInteraction();
+  // kaart pas meten/centreren als de popup zichtbaar is
+  setTimeout(() => {
+    if (!elevMap) return;
+    elevMap.invalidateSize();
+    if (elevRouteLayer) { try { elevMap.fitBounds(elevRouteLayer.getBounds(), { padding: [20, 20] }); } catch(e) {} }
+    updateElevMapRiders();
+    updateScrubMarker();
+  }, 80);
   requestAnimationFrame(drawElevProfile);
 }
 function closeElevProfile() { document.getElementById('elev-modal').style.display = 'none'; }
@@ -1067,6 +1190,28 @@ function drawElevProfile() {
     const grad = dKm > 0.02 ? (ele[i+1] - ele[i]) / (dKm * 10) : 0;
     ctx.strokeStyle = gradColor(grad);
     ctx.beginPath(); ctx.moveTo(xToPx(dist[i]), yToPx(ele[i])); ctx.lineTo(xToPx(dist[i+1]), yToPx(ele[i+1])); ctx.stroke();
+  }
+
+  // rijders op het profiel (zelfde top-N als op de kaart)
+  if (showElevRiders) {
+    for (const r of topElevRiders()) {
+      const km = r.distanceOnTrack;
+      if (km < km0 || km > km1) continue;
+      const x = xToPx(km), y = yToPx(eleAtKm(km));
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = r.riderColor || '#888'; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+    }
+  }
+
+  // scrubber-lijn (gekoppeld aan de schuifbalk + kaartmarker)
+  if (scrubKm >= km0 && scrubKm <= km1) {
+    const sx = xToPx(scrubKm);
+    ctx.strokeStyle = '#ffbc00'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(sx, padT); ctx.lineTo(sx, padT + plotH); ctx.stroke();
+    const sy = yToPx(eleAtKm(scrubKm));
+    ctx.fillStyle = '#ffbc00'; ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
   }
 
   // crosshair + uitlezing
@@ -1148,7 +1293,7 @@ function initElevInteraction() {
     else if (e.touches.length === 1) { dragX = e.touches[0].clientX; dragView = [...epView]; pinch = null; }
   };
 }
-window.addEventListener('resize', () => { const m = document.getElementById('elev-modal'); if (m && m.style.display === 'flex') drawElevProfile(); });
+window.addEventListener('resize', () => { const m = document.getElementById('elev-modal'); if (m && m.style.display === 'flex') { if (elevMap) elevMap.invalidateSize(); drawElevProfile(); } });
 
 // ── Rider Tracks ───────────────────────────────────────────────────────
 const riderTracks = {};
