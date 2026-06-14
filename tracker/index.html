@@ -170,6 +170,11 @@
     .ghost-icon .ghost-lbl { position: absolute; left: 19px; top: -2px; font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
     .route-div-lbl { background: none; border: none; }
     .route-div-lbl .route-div-pill { display: inline-block; transform: translate(-50%, -50%); color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap; padding: 2px 6px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.35); opacity: .92; }
+    .cam-marker { font-size: 18px; line-height: 26px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.4); background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+    .cam-pop .cam-pop-t { font-weight: 700; font-size: 13px; }
+    .cam-pop .cam-pop-l { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .cam-pop img { width: 100%; border-radius: 6px; margin: 4px 0; display: block; }
+    .cam-pop .cam-pop-n { font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px; }
     .leaflet-control-scale-line {
       background: rgba(255,255,255,.85); border: 1px solid var(--navy); border-top: none;
       color: var(--navy); font-size: 11px; font-weight: 600; padding: 1px 6px; line-height: 1.3;
@@ -485,6 +490,7 @@
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader('M')" title="Vlieg naar de leider">🥇 Leider</button>
         <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀</button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
+        <button class="ctrl-btn" id="btn-cams" onclick="toggleCams()" title="Toon geverifieerde webcams langs de route" style="display:none">📷 Webcams</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel" style="display:none">📈 Hoogteprofiel</button>
@@ -1311,6 +1317,46 @@ function initElevInteraction() {
   };
 }
 window.addEventListener('resize', () => { const m = document.getElementById('elev-modal'); if (m && m.style.display === 'flex') { if (elevMap) elevMap.invalidateSize(); drawElevProfile(); } });
+
+// ── Webcams langs de route (geverifieerde, gecureerde lijst) ────────────
+let camLayer = null;
+async function checkWebcams() {
+  // knop alleen tonen als er geverifieerde cams zijn
+  try {
+    const r = await fetch(`${API}/api/webcams/curated?race=${RC}`);
+    if (!r.ok) return;
+    const j = await r.json();
+    if (j.webcams && j.webcams.length) document.getElementById('btn-cams').style.display = '';
+  } catch(e) {}
+}
+async function toggleCams() {
+  const btn = document.getElementById('btn-cams');
+  if (camLayer) { camLayer.remove(); camLayer = null; btn.classList.remove('active'); return; }
+  btn.classList.add('active');
+  try {
+    const r = await fetch(`${API}/api/webcams/curated?race=${RC}`);
+    const cams = (await r.json()).webcams || [];
+    if (!cams.length) { btn.classList.remove('active'); return; }
+    camLayer = L.layerGroup();
+    for (const c of cams) {
+      if (c.lat == null || c.lon == null) continue;
+      const m = L.marker([c.lat, c.lon], {
+        icon: L.divIcon({ className: 'cam-marker', html: '📷', iconSize: [26, 26], iconAnchor: [13, 13] })
+      });
+      const loc = [c.city, c.region].filter(Boolean).join(', ');
+      const thumb = c.thumbnail || c.preview;
+      m.bindPopup(
+        `<div class="cam-pop"><div class="cam-pop-t">${c.title || 'Webcam'}</div>` +
+        (loc ? `<div class="cam-pop-l">${loc}</div>` : '') +
+        (thumb ? `<img src="${thumb}" alt="">` : '') +
+        (c.note ? `<div class="cam-pop-n">${c.note}</div>` : '') +
+        (c.detailUrl ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : '') +
+        `</div>`, { maxWidth: 240 });
+      m.addTo(camLayer);
+    }
+    camLayer.addTo(map);
+  } catch(e) { btn.classList.remove('active'); }
+}
 
 // ── Rider Tracks ───────────────────────────────────────────────────────
 const riderTracks = {};
@@ -2598,6 +2644,7 @@ async function init() {
   } catch(e) { console.warn('Config load failed:', e.message); }
   // Lau-knop alleen voor Tour Divide
   if (RC === 'tourdivide26') { document.getElementById('btn-lau').style.display = ''; }
+  checkWebcams();
   initTabs();
   checkResults();
   checkOverlays();
