@@ -55,6 +55,8 @@
   <span id="status">laden…</span>
   <span id="progress"></span>
   <span class="sp"></span>
+  <label style="font-size:12px;color:var(--muted)">vanaf km <input id="fromkm" type="number" min="0" step="10" value="850" style="width:72px;padding:5px 6px;border:1px solid var(--border);border-radius:6px" oninput="setFromKm(this.value)"></label>
+  <button onclick="fromLeader()" title="Zet de ondergrens op de huidige koppositie">📍 leider</button>
   <button id="add-btn" onclick="toggleAddMode()">➕ Toevoegen</button>
   <button onclick="scan(true)">↻ Herscan</button>
   <button class="primary" id="save-btn" onclick="save()" disabled>Opslaan op kaart (0)</button>
@@ -69,7 +71,9 @@
 const API  = 'https://tracker.klikschaak.nl';
 const RACE = 'tourdivide26';
 const SLUG = 'tour-divide-2026';
-let cams = [];
+let allCams = [];              // alle gevonden cams
+let cams = [];                 // zichtbaar (gefilterd op km ≥ fromKm)
+let fromKm = 850;              // cams vóór dit punt zijn niet meer relevant (renners voorbij)
 const selected  = new Set();   // nuttig → op kaart
 const dropped   = new Set();   // weggegooid
 const notes = {};
@@ -81,11 +85,28 @@ function setStatus(t) { document.getElementById('status').textContent = t; }
 function esc(s){ return (s||'').toString().replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
 function updateProgress() {
-  const done = selected.size + dropped.size;
-  document.getElementById('progress').textContent = cams.length ? `${done}/${cams.length} beoordeeld · ${selected.size} op kaart` : '';
+  const done = cams.filter(c => statusOf(c.id) !== 'todo').length;
+  document.getElementById('progress').textContent = cams.length ? `${done}/${cams.length} beoordeeld (vanaf km ${fromKm}) · ${selected.size} op kaart` : '';
   const b = document.getElementById('save-btn');
   b.textContent = `Opslaan op kaart (${selected.size})`;
   b.disabled = false;
+}
+
+// pas het km-filter toe op de volledige lijst → zichtbare cams + markers + review
+function applyFilter() {
+  cams = allCams.filter(c => (c.routeKm || 0) >= fromKm);
+  curIdx = -1;
+  placeMarkers();
+  renderReview();
+  updateProgress();
+}
+function setFromKm(v) { fromKm = parseFloat(v) || 0; applyFilter(); }
+async function fromLeader() {
+  try {
+    const riders = await (await fetch(`${API}/api/fmc/${RACE}/positions`)).json();
+    const lead = Math.max(0, ...(Array.isArray(riders) ? riders : []).filter(x => !x.scratched).map(x => x.distanceOnTrack || 0));
+    if (lead > 0) { fromKm = Math.floor(lead / 10) * 10; document.getElementById('fromkm').value = fromKm; applyFilter(); setStatus(`ondergrens op koppositie: km ${fromKm}`); }
+  } catch(e) { setStatus('⚠ kon koppositie niet ophalen: ' + e.message); }
 }
 
 async function initMap() {
@@ -110,11 +131,9 @@ async function scan(fresh) {
     const j = await r.json();
     if (j.enabled === false) { setStatus('⚠ Geen WINDY_API_KEY ingesteld op de server.'); renderReview(); return; }
     if (j.error) setStatus('⚠ ' + j.error);
-    cams = j.webcams || [];
-    setStatus(`${cams.length} cams gevonden${j.cached ? ' (cache)' : ''}`);
-    placeMarkers();
-    renderReview();
-    updateProgress();
+    allCams = j.webcams || [];
+    setStatus(`${allCams.length} cams gevonden${j.cached ? ' (cache)' : ''}`);
+    applyFilter();
   } catch(e) { setStatus('⚠ ' + e.message); }
 }
 
@@ -229,12 +248,12 @@ async function onMapClick(e) {
     });
     const j = await r.json();
     if (j.error) { setStatus('⚠ ' + j.error); toggleAddMode(); return; }
-    cams.push(j.added);
-    cams.sort((a,b)=>(a.routeKm||0)-(b.routeKm||0));
+    allCams.push(j.added);
+    allCams.sort((a,b)=>(a.routeKm||0)-(b.routeKm||0));
     selected.add(j.added.id);            // handmatig toegevoegd = meteen op kaart
-    placeMarkers();
-    openReview(cams.findIndex(c => c.id === j.added.id));
-    updateProgress();
+    applyFilter();
+    const i = cams.findIndex(c => c.id === j.added.id);
+    if (i >= 0) openReview(i);
     setStatus('✓ toegevoegd en aangevinkt — klik straks "Opslaan op kaart"');
   } catch(err) { setStatus('⚠ ' + err.message); }
   toggleAddMode();
@@ -244,18 +263,16 @@ async function delManual(id) {
   try {
     await fetch(`${API}/api/webcams/manual?race=${RACE}&id=${encodeURIComponent(id)}`, { method:'DELETE' });
     selected.delete(id); dropped.delete(id);
-    const i = cams.findIndex(c => c.id === id);
-    if (i >= 0) cams.splice(i, 1);
-    if (markers[id]) { markers[id].remove(); delete markers[id]; }
-    curIdx = Math.min(curIdx, cams.length - 1);
-    renderReview(); updateProgress();
+    const ai = allCams.findIndex(c => c.id === id);
+    if (ai >= 0) allCams.splice(ai, 1);
+    applyFilter();
   } catch(e) { setStatus('⚠ ' + e.message); }
   return false;
 }
 
 async function save() {
   const payload = [...selected].map(id => {
-    const c = cams.find(x => x.id === id) || { id };
+    const c = allCams.find(x => x.id === id) || { id };
     return { id, source:c.source, title:c.title, lat:c.lat, lon:c.lon, city:c.city, region:c.region, country:c.country,
       thumbnail:c.thumbnail, detailUrl:c.detailUrl, playerDay:c.playerDay, note:notes[id]||'' };
   });
