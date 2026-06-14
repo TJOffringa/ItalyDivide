@@ -253,7 +253,12 @@
       transition: color .1s, background .1s, border-color .1s;
     }
     .rrp-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 700; }
-    #rrp-close { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 2px; line-height: 1; }
+    #rrp-search { flex: 1; min-width: 0; font-size: 11px; padding: 4px 8px; border-radius: 5px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    #rrp-search:focus { outline: none; border-color: var(--teal); }
+    #rrp-search::placeholder { color: var(--muted); }
+    .rrp-dist { font-size: 11px; font-weight: 700; flex-shrink: 0; white-space: nowrap; }
+    #rrp-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 2px; line-height: 1; flex-shrink: 0; }
     #rrp-close:hover { color: var(--text); }
     #rrp-list { flex: 1; overflow-y: auto; }
     .rrp-row {
@@ -450,7 +455,7 @@
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
-        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op de route voor doortijden">📍 Routeranglijst</button>
+        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking()" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 Afstand tot punt</button>
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
         <button class="ctrl-btn" id="btn-gemroute" onclick="toggleGemRoute()" title="Werkelijke route Gemperle 2025 (omleiding o.a. New Mexico)" style="display:none">🟢 Route Gemperle ’25</button>
@@ -503,9 +508,7 @@
         <div id="rrp-header">
           <div id="rrp-km">Klik op de route om een punt te kiezen</div>
           <div id="rrp-filters">
-            <button class="rrp-btn active" id="rrpf-all"   onclick="setRRFilter('all')">Alles</button>
-            <button class="rrp-btn"        id="rrpf-top10" onclick="setRRFilter('top10')">Top 10</button>
-            <button class="rrp-btn"        id="rrpf-top25" onclick="setRRFilter('top25')">Top 25</button>
+            <input id="rrp-search" oninput="onRRSearch()" placeholder="zoek rijder…" autocomplete="off">
             <button id="rrp-close" onclick="closeRouteRanking()">✕</button>
           </div>
         </div>
@@ -1501,6 +1504,7 @@ function closeRouteRanking() {
   map.getContainer().classList.remove('map-crosshair');
   if (selectedRouteMarker) { selectedRouteMarker.remove(); selectedRouteMarker = null; }
   lastClickedKm = null;
+  rrSearch = ''; const si = document.getElementById('rrp-search'); if (si) si.value = '';
 }
 
 function setRRFilter(f) {
@@ -1529,79 +1533,76 @@ function ghostHrsAtKm(pts, km) {   // verstreken uren waarop de ghost deze km be
   return null;
 }
 
-function showRouteRanking(clickedKm) {
-  lastClickedKm = clickedKm;
-  const elapsed = Date.now() - RACE_START.getTime();
+let rrSearch = '';
+function onRRSearch() {
+  rrSearch = (document.getElementById('rrp-search').value || '').toLowerCase().trim();
+  if (lastClickedKm !== null) showRouteRanking(lastClickedKm);
+}
 
-  const passed = riders
-    .filter(r => !r.scratched && (r.distanceOnTrack || 0) >= clickedKm && r.distanceOnTrack > 0)
-    .map(r => {
-      const id    = String(r.deviceId);
-      const rHist = riderHistoryCache?.[id];
-      let estMs, isActual = false, src = '';
-
-      // Exacte doortijd uit trackleaders raceflow indien beschikbaar (leiders)
-      const tlSeries = tlflowData?.riders?.[id];
-      const tlHrs = (tlSeries && tlflowData.rstarttime) ? ghostHrsAtKm(tlSeries, clickedKm) : null;
-      if (tlHrs != null) {
-        estMs = (tlflowData.rstarttime + tlHrs * 3600000) - RACE_START.getTime();
-        isActual = true; src = 'tl';
-      } else if (rHist && rHist.length >= 1) {
-        for (let i = 0; i < rHist.length; i++) {
-          if (rHist[i][0] >= clickedKm) {
-            if (i === 0) {
-              estMs = rHist[0][1] - RACE_START.getTime();
-            } else {
-              const [km0, t0] = rHist[i - 1], [km1, t1] = rHist[i];
-              const frac = km1 > km0 ? (clickedKm - km0) / (km1 - km0) : 0;
-              estMs = (t0 + frac * (t1 - t0)) - RACE_START.getTime();
-            }
-            isActual = true;
-            break;
-          }
-        }
+// Doortijd (ms vanaf RACE_START) waarop een rijder clickedKm passeerde; null = nog niet
+function riderPassMs(r, clickedKm) {
+  const id = String(r.deviceId);
+  const tlSeries = tlflowData?.riders?.[id];
+  const tlHrs = (tlSeries && tlflowData.rstarttime) ? ghostHrsAtKm(tlSeries, clickedKm) : null;
+  if (tlHrs != null) return (tlflowData.rstarttime + tlHrs * 3600000) - RACE_START.getTime();
+  const rHist = riderHistoryCache?.[id];
+  if (rHist && rHist.length) {
+    for (let i = 0; i < rHist.length; i++) {
+      if (rHist[i][0] >= clickedKm) {
+        if (i === 0) return rHist[0][1] - RACE_START.getTime();
+        const [km0, t0] = rHist[i-1], [km1, t1] = rHist[i];
+        const frac = km1 > km0 ? (clickedKm - km0) / (km1 - km0) : 0;
+        return (t0 + frac * (t1 - t0)) - RACE_START.getTime();
       }
-      if (!isActual) estMs = (clickedKm / r.distanceOnTrack) * elapsed;
-
-      const estTime = new Date(RACE_START.getTime() + estMs);
-      return { ...r, estMs, estTime, isActual, src };
-    });
-
-  // Record-ghosts toevoegen: wanneer was de recordhouder op deze km?
-  if (ghostData) {
-    for (const g of ghostData) {
-      const hrs = ghostHrsAtKm(g.points, clickedKm);
-      if (hrs == null) continue;
-      const estMs = hrs * 3600000;
-      passed.push({ name: g.label, riderColor: g.color, distanceOnTrack: g.points[g.points.length-1][1],
-        estMs, estTime: new Date(RACE_START.getTime() + estMs), isActual: true, ghost: true });
     }
   }
-  passed.sort((a, b) => a.estMs - b.estMs);
+  return null;
+}
 
-  const limit = routeRankingFilter === 'top10' ? 10
-              : routeRankingFilter === 'top25' ? 25
-              : Infinity;
-  const shown = passed.slice(0, limit);
-  const hasActual = shown.some(r => r.isActual);
+function showRouteRanking(clickedKm) {
+  lastClickedKm = clickedKm;
+  const nowHrs = (Date.now() - RACE_START.getTime()) / 3600000;
+
+  // Alle actieve rijders + record-ghosts, met hun afstand tot het geklikte punt
+  const list = riders
+    .filter(r => !r.scratched && r.distanceOnTrack > 0)
+    .map(r => ({ name: r.name, color: r.riderColor || '#888', dist: r.distanceOnTrack - clickedKm, ghost: false, r }));
+  if (ghostData) {
+    for (const g of ghostData) {
+      const last = g.points[g.points.length-1];
+      if (nowHrs >= last[0]) continue;                 // ghost al gefinisht
+      const gk = ghostKmAt(g.points, nowHrs);
+      if (gk == null) continue;
+      list.push({ name: g.label, color: g.color, dist: gk - clickedKm, ghost: true });
+    }
+  }
+  list.sort((a, b) => Math.abs(a.dist) - Math.abs(b.dist));
+
+  const filtered = rrSearch ? list.filter(x => x.name.toLowerCase().includes(rrSearch)) : list;
+  const shown = rrSearch ? filtered : filtered.slice(0, 3);
 
   document.getElementById('rrp-km').textContent =
-    `Km ${clickedKm.toFixed(1)} · ${passed.length} rijder${passed.length !== 1 ? 's' : ''} gepasseerd${hasActual ? '' : ' (schatting)'}`;
+    `Km ${clickedKm.toFixed(1)} — afstand van rijders${rrSearch ? ` · "${rrSearch}"` : ' · 3 dichtstbij'}`;
 
   const el = document.getElementById('rrp-list');
-  if (shown.length === 0) {
-    el.innerHTML = '<div class="rrp-empty">Nog geen rijders gepasseerd op dit punt</div>';
+  if (!shown.length) {
+    el.innerHTML = `<div class="rrp-empty">${rrSearch ? 'Geen rijder gevonden' : 'Geen rijders'}</div>`;
     return;
   }
-  const leadMs = passed[0].estMs; // snelste doortijd op dit punt
-  el.innerHTML = shown.map((r, i) => `
-    <div class="rrp-row"${r.ghost ? ' style="opacity:.85"' : ''}>
-      <span class="rrp-rank">${i + 1}</span>
-      <span class="rrp-dot" style="background:${r.riderColor || '#888'}${r.ghost ? ';border-radius:1px;width:10px;height:10px' : ''}"></span>
-      <span class="rrp-name">${r.ghost ? '◆ ' : ''}${r.name}</span>
-      <span class="rrp-gap" title="Achterstand op snelste hier">${r.estMs - leadMs < 30000 ? 'leider' : '+' + fmtDur(r.estMs - leadMs)}</span>
-      <span class="rrp-time" title="${r.ghost ? 'Doortijd recordhouder' : r.src === 'tl' ? 'Exacte doortijd (trackleaders raceflow)' : r.isActual ? 'Werkelijke doortijd' : 'Schatting o.b.v. gemiddelde snelheid'}">${r.src === 'tl' ? '◆ ' : r.isActual ? '' : '~'}${r.estTime.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>
-    </div>`).join('');
+  el.innerHTML = shown.map(x => {
+    const past = x.dist >= 0;
+    const distLbl = past ? `${Math.round(x.dist)} km voorbij` : `${Math.round(-x.dist)} km te gaan`;
+    let timeHtml = '';
+    if (!x.ghost && past) {
+      const pm = riderPassMs(x.r, clickedKm);
+      if (pm != null) timeHtml = `<span class="rrp-time" title="Gepasseerd om">om ${new Date(RACE_START.getTime()+pm).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span>`;
+    }
+    return `<div class="rrp-row"${x.ghost ? ' style="opacity:.85"' : ''}>
+      <span class="rrp-dot" style="background:${x.color}${x.ghost ? ';border-radius:1px;width:10px;height:10px' : ''}"></span>
+      <span class="rrp-name">${x.ghost ? '◆ ' : ''}${x.name}</span>
+      <span class="rrp-dist" style="color:${past ? 'var(--muted)' : 'var(--red)'}">${distLbl}</span>${timeHtml}
+    </div>`;
+  }).join('');
 }
 
 async function toggleGradient() {
