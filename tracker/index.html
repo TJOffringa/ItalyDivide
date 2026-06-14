@@ -459,6 +459,7 @@
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader()" title="Vlieg naar de leider">🥇 Leider</button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
         <button class="ctrl-btn" id="btn-gemroute" onclick="toggleGemRoute()" title="Werkelijke route Gemperle 2025 (omleiding o.a. New Mexico)" style="display:none">🟢 Route Gemperle ’25</button>
+        <button class="ctrl-btn" id="btn-route24" onclick="toggleRoute24()" title="Afwijkende stukken van de 2024-route (geldt voor Leveika '24 & Lau '24)" style="display:none">🟣 Route ’24</button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 Ondergrond</button>
@@ -2050,9 +2051,28 @@ async function toggleGemRoute() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const pts = await r.json();
     gemRouteLayer = L.polyline(pts, { color: '#2e7d32', weight: 3, opacity: .9, dashArray: '6 6', lineJoin: 'round' }).addTo(map);
-    gemRouteLayer.bindTooltip('Route Gemperle ’25 (record)', { sticky: true });
+    gemRouteLayer.bindTooltip('Route Gemperle ’25', { sticky: true });
     btn.classList.add('active');
   } catch(e) { console.warn('Gemperle-route laden mislukt:', e.message); }
+}
+
+// Afwijkende stukken van de 2024-route t.o.v. dit jaar (geldt voor Leveika '24 & Lau '24)
+let route24Layer = null;
+async function toggleRoute24() {
+  const btn = document.getElementById('btn-route24');
+  if (route24Layer) {
+    route24Layer.remove(); route24Layer = null;
+    btn.classList.remove('active');
+    return;
+  }
+  try {
+    const r = await fetch(`${API}/${SLUG}/route2024-diff.json`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const segs = await r.json();
+    route24Layer = L.polyline(segs, { color: '#7c3aed', weight: 3, opacity: .9, dashArray: '6 6', lineJoin: 'round' }).addTo(map);
+    route24Layer.bindTooltip('Route 2024 (afwijkende stukken)', { sticky: true });
+    btn.classList.add('active');
+  } catch(e) { console.warn('2024-route laden mislukt:', e.message); }
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────
@@ -2124,7 +2144,7 @@ async function init() {
     }
   } catch(e) { console.warn('Config load failed:', e.message); }
   // Lau-knop alleen voor Tour Divide
-  if (RC === 'tourdivide26') { document.getElementById('btn-lau').style.display = ''; document.getElementById('btn-gemroute').style.display = ''; }
+  if (RC === 'tourdivide26') { document.getElementById('btn-lau').style.display = ''; document.getElementById('btn-gemroute').style.display = ''; document.getElementById('btn-route24').style.display = ''; }
   initTabs();
   checkResults();
   checkOverlays();
