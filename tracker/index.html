@@ -1867,10 +1867,27 @@ function setViewLeaderLow(latlng, zoom) {
 // ── Record-ghosts (historische winnaars, op hun werkelijke tempo) ────────
 let ghostData = null;
 const ghostMarkers = {};
+let route2024 = null;   // [[lat,lon,cumKm],...] — voor de 2024-ghosts (route week af van 2026)
 async function loadGhosts() {
   if (!SLUG) return;
   try { const r = await fetch(`${API}/${SLUG}/ghosts.json`); if (r.ok) ghostData = await r.json(); } catch(e) {}
+  try { const r = await fetch(`${API}/${SLUG}/route2024.json`); if (r.ok) route2024 = await r.json(); } catch(e) {}
   updateGhosts();
+}
+function route2024PointAtKm(km) {
+  if (!route2024 || route2024.length < 2) return null;
+  const total = route2024[route2024.length-1][2];
+  if (km <= 0) return [route2024[0][0], route2024[0][1]];
+  if (km >= total) return [route2024[route2024.length-1][0], route2024[route2024.length-1][1]];
+  let lo = 0, hi = route2024.length - 1;
+  while (lo < hi) { const mid = (lo+hi)>>1; if (route2024[mid][2] < km) lo = mid+1; else hi = mid; }
+  const i = Math.max(1, lo), a = route2024[i-1], b = route2024[i];
+  const f = (km - a[2]) / ((b[2]-a[2])||1);
+  return [a[0]+f*(b[0]-a[0]), a[1]+f*(b[1]-a[1])];
+}
+// 2024-ghosts volgen de 2024-route; overige (2025) de route van dit jaar
+function ghostPointAtKm(g, km) {
+  return (g.year === 2024 && route2024) ? route2024PointAtKm(km) : routePointAtKm(km);
 }
 function ghostKmAt(pts, hrs) {              // interpoleer km op verstreken uren; null = al gefinisht
   if (!pts || !pts.length) return null;
@@ -1900,7 +1917,7 @@ function updateGhosts() {
     const km = hrs < 0 ? 0 : ghostKmAt(g.points, hrs);
     const ex = ghostMarkers[gi];
     if (km == null) { if (ex) { ex.remove(); delete ghostMarkers[gi]; } return; } // gefinisht
-    const pt = routePointAtKm(km); if (!pt) return;
+    const pt = ghostPointAtKm(g, km); if (!pt) return;
     if (ex) { ex.setLatLng(pt); ex._km = km; }
     else {
       const icon = L.divIcon({ className: 'ghost-icon',
@@ -1936,7 +1953,7 @@ function toggleGhostTrack(gi) {
     const curKm = hrs >= last[0] ? last[1] : (ghostKmAt(g.points, hrs) ?? last[1]);
     // pseudo-track [lat,lon,ts,km] uit de tempo-curve → uur-tijdstempels + rustplekken (geen lijn)
     const track = g.points.filter(p => p[0] <= hrs + 0.01 && p[1] <= curKm + 1)
-      .map(([h, km]) => { const pt = routePointAtKm(km) || [0,0]; return [pt[0], pt[1], startRef + h*3600000, km]; });
+      .map(([h, km]) => { const pt = ghostPointAtKm(g, km) || [0,0]; return [pt[0], pt[1], startRef + h*3600000, km]; });
     const hourMarkers = drawHourMarkers(track);
     const stopList = extractStopsFromTrack(track, null, startRef + hrs*3600000, 20*60000);
     // Geschatte rust in datagaten: een lang segment (>60 min) met een matig gemiddelde
