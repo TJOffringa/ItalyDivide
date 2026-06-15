@@ -249,10 +249,24 @@
     /* ── Layer switcher ── */
     #layer-switcher {
       position: absolute; bottom: 32px; left: 10px; z-index: 900;
-      display: flex; gap: 5px;
-      background: rgba(255,255,255,.96); border: 1px solid var(--border);
-      border-radius: 8px; padding: 5px; box-shadow: 0 2px 8px rgba(28,38,53,.18);
     }
+    #ls-toggle {
+      display: flex; align-items: center; gap: 5px; cursor: pointer;
+      background: rgba(255,255,255,.96); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 8px 4px 5px;
+      box-shadow: 0 2px 8px rgba(28,38,53,.18);
+      font-size: 11px; font-weight: 600; color: var(--text); user-select: none;
+    }
+    #ls-toggle img { width: 28px; height: 21px; object-fit: cover; border-radius: 3px; flex-shrink: 0; }
+    #ls-toggle .ls-chevron { font-size: 9px; color: var(--muted); margin-left: 2px; transition: transform .2s; }
+    #ls-toggle.open .ls-chevron { transform: rotate(180deg); }
+    #ls-panel {
+      display: none; position: absolute; bottom: calc(100% + 6px); left: 0;
+      background: rgba(255,255,255,.97); border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px; gap: 5px;
+      box-shadow: 0 4px 16px rgba(28,38,53,.22);
+    }
+    #ls-panel.open { display: flex; }
     .ls-tile {
       cursor: pointer; border-radius: 5px; overflow: hidden;
       border: 2px solid transparent; transition: border-color .15s;
@@ -706,6 +720,13 @@ let surfaceLayer  = null;
 // ── Kaartlagen ─────────────────────────────────────────────────────────
 // Previews: vaste tegel Helena MT (zoom 10, x=193, y=361)
 const BASE_LAYERS = {
+  osm: {
+    label: 'Standaard',
+    thumb: 'https://a.tile.openstreetmap.org/10/193/361.png',
+    layers: [
+      { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19 },
+    ],
+  },
   otm: {
     label: 'Topo',
     thumb: 'https://a.tile.opentopomap.org/10/193/361.png',
@@ -737,7 +758,7 @@ const BASE_LAYERS = {
     ],
   },
 };
-let activeBaseId = 'otm';
+let activeBaseId = 'osm';
 let activeTileLayers = [];
 
 function setBaseLayer(id) {
@@ -751,23 +772,53 @@ function setBaseLayer(id) {
     }).addTo(map);
     activeTileLayers.push(l);
   });
-  // Zorg dat route/markers bovenop blijven
   activeTileLayers.forEach(l => l.bringToBack());
-  // Blokkeer inzoomen voorbij het maximum van deze kaartlaag
   const layerMax = Math.min(...def.layers.map(lc => lc.maxZoom || 19));
   map.setMaxZoom(layerMax);
   if (map.getZoom() > layerMax) map.setZoom(layerMax);
   activeBaseId = id;
   document.querySelectorAll('.ls-tile').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+  // Toggle-knop bijwerken
+  const tog = document.getElementById('ls-toggle');
+  if (tog) {
+    tog.querySelector('img').src = def.thumb;
+    tog.querySelector('.ls-name').textContent = def.label;
+  }
+  closeLsPanel();
 }
 
 function buildLayerSwitcher() {
   const sw = document.getElementById('layer-switcher');
-  sw.innerHTML = Object.entries(BASE_LAYERS).map(([id, def]) => `
-    <div class="ls-tile${id === activeBaseId ? ' active' : ''}" data-id="${id}" onclick="setBaseLayer('${id}')" title="${def.label}">
-      <img src="${def.thumb}" alt="${def.label}" loading="lazy">
-      <span>${def.label}</span>
-    </div>`).join('');
+  const activeDef = BASE_LAYERS[activeBaseId];
+  sw.innerHTML = `
+    <div id="ls-toggle" onclick="toggleLsPanel(event)" title="Wissel kaartlaag">
+      <img src="${activeDef.thumb}" alt="${activeDef.label}">
+      <span class="ls-name">${activeDef.label}</span>
+      <span class="ls-chevron">▲</span>
+    </div>
+    <div id="ls-panel">
+      ${Object.entries(BASE_LAYERS).map(([id, def]) => `
+        <div class="ls-tile${id === activeBaseId ? ' active' : ''}" data-id="${id}" onclick="setBaseLayer('${id}')" title="${def.label}">
+          <img src="${def.thumb}" alt="${def.label}" loading="lazy">
+          <span>${def.label}</span>
+        </div>`).join('')}
+    </div>`;
+  document.addEventListener('click', e => {
+    if (!sw.contains(e.target)) closeLsPanel();
+  }, { capture: true, passive: true });
+}
+
+function toggleLsPanel(e) {
+  e.stopPropagation();
+  const panel = document.getElementById('ls-panel');
+  const tog   = document.getElementById('ls-toggle');
+  const open  = panel.classList.toggle('open');
+  tog.classList.toggle('open', open);
+}
+
+function closeLsPanel() {
+  document.getElementById('ls-panel')?.classList.remove('open');
+  document.getElementById('ls-toggle')?.classList.remove('open');
 }
 
 // ── Map ────────────────────────────────────────────────────────────────
