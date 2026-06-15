@@ -451,6 +451,30 @@
     #elev-canvas.selecting { cursor: crosshair; }
     #ep-readout { margin-left: auto; font-size: 11px; color: var(--text); font-weight: 600; }
     #ep-status { padding: 8px 16px; font-size: 12px; color: var(--muted); text-align: center; }
+
+    /* ── Analyse-scherm ── */
+    #ana-controls { padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+    #ana-controls select, #ana-controls input { font-family: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface2); color: var(--text); }
+    #ana-controls label { color: var(--muted); }
+    #ana-controls button.ana-go { background: var(--teal); color: var(--cream); border: none; border-radius: 5px; padding: 5px 10px; font-weight: 700; cursor: pointer; }
+    #ana-body { flex: 1; overflow: auto; padding: 0 16px 16px; }
+    .ana-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ana-table th, .ana-table td { padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+    .ana-table th { position: sticky; top: 0; background: var(--surface2); color: var(--muted); font-weight: 600; text-align: right; z-index: 1; }
+    .ana-table td.l, .ana-table th.l { text-align: left; }
+    .ana-table tr:hover td { background: rgba(20,184,166,.06); }
+    .ana-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+    .ana-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .ana-pos { color: var(--green); font-weight: 700; }
+    .ana-neg { color: #dc2626; font-weight: 700; }
+    .ana-h2 { font-size: 12px; font-weight: 700; color: var(--text); margin: 16px 0 6px; }
+    .ana-sub { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .ana-bar-row { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 2px 0; }
+    .ana-bar-lbl { width: 86px; color: var(--muted); text-align: right; flex-shrink: 0; }
+    .ana-bar-track { flex: 1; background: var(--surface2); border-radius: 3px; height: 14px; position: relative; }
+    .ana-bar-fill { background: var(--teal); height: 100%; border-radius: 3px; }
+    .ana-bar-val { width: 38px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .ana-empty { color: var(--muted); padding: 24px; text-align: center; }
     #raceflow-toolbar, .chart-toolbar {
       display: flex; align-items: center; gap: 6px;
       padding: 6px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
@@ -523,6 +547,7 @@
       <div id="controls">
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
+        <button class="ctrl-btn" id="btn-analyse" onclick="openAnalyse()" title="Analyse: dagboek per rijder, segment-splits, vergelijking met record, veldoverzicht">🔬 Analyse</button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 Routeklassement</button>
         <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 Afstand tot punt</button>
@@ -695,6 +720,23 @@
       </div>
     </div>
     <div id="ep-status"></div>
+  </div>
+</div>
+
+<div id="ana-modal" class="chart-modal" style="display:none" onclick="if(event.target===this)closeAnalyse()">
+  <div class="chart-inner" style="width:min(96vw,1000px);height:90vh">
+    <div class="chart-hdr">
+      <span>🔬 Analyse</span>
+      <button class="chart-close" onclick="closeAnalyse()">✕</button>
+    </div>
+    <div class="chart-toolbar" id="ana-tabs">
+      <button class="rf-tb-btn active" data-sec="dagboek" onclick="anaSwitch('dagboek')">📅 Dagboek</button>
+      <button class="rf-tb-btn" data-sec="splits" onclick="anaSwitch('splits')">⏱️ Segment-splits</button>
+      <button class="rf-tb-btn" data-sec="ghost" onclick="anaSwitch('ghost')">👻 Vs record</button>
+      <button class="rf-tb-btn" data-sec="veld" onclick="anaSwitch('veld')">🌐 Veld</button>
+    </div>
+    <div id="ana-controls"></div>
+    <div id="ana-body"><div class="ana-empty">⏳ Laden…</div></div>
   </div>
 </div>
 
@@ -2892,6 +2934,215 @@ async function drawRouteDivergences() {
       }
     } catch(e) { /* stil overslaan */ }
   }
+}
+
+// ════════════════════════ Analyse-scherm ════════════════════════════════
+let anaSection = 'dagboek';
+let anaRiderId = null;            // gekozen rijder (deviceId als string)
+let anaGhostIdx = 0;
+let anaSplitA = 0, anaSplitB = 0;
+let anaGainCum = null, anaLossCum = null, anaGainDist = null;
+
+function anaRidersAll() {
+  const list = (allRiders && allRiders.length) ? allRiders : riders;
+  return (list || []).filter(r => (r.distanceOnTrack || 0) > 0);
+}
+function anaActiveSorted() {
+  return anaRidersAll().filter(r => !r.scratched).sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0));
+}
+function anaRiderName(id) { const r = anaRidersAll().find(x => String(x.deviceId) === String(id)); return r ? r.name : String(id); }
+
+// Serie [[km, ts], …]: top-15 via tlflow (hoge resolutie), anders history (5-min)
+function anaSeries(id) {
+  const tl = tlflowData?.riders?.[id];
+  if (tl && tl.length && tlflowData.rstarttime) return tl.map(([h, km]) => [km, tlflowData.rstarttime + h * 3600000]);
+  return riderHistoryCache?.[String(id)] || null;
+}
+function histTimeAtKm(s, km) {           // tijdstip (ms) waarop de rijder km bereikte; null = nog niet
+  if (!s || !s.length) return null;
+  if (km <= s[0][0]) return s[0][1];
+  for (let i = 1; i < s.length; i++) if (s[i][0] >= km) { const [k0, t0] = s[i-1], [k1, t1] = s[i]; const f = k1 > k0 ? (km - k0) / (k1 - k0) : 0; return t0 + f * (t1 - t0); }
+  return null;
+}
+function histKmAtTime(s, ts) {           // km-stand op tijdstip ts
+  if (!s || !s.length) return null;
+  if (ts <= s[0][1]) return s[0][0];
+  if (ts >= s[s.length-1][1]) return s[s.length-1][0];
+  for (let i = 1; i < s.length; i++) if (s[i][1] >= ts) { const [k0, t0] = s[i-1], [k1, t1] = s[i]; const f = t1 > t0 ? (ts - t0) / (t1 - t0) : 0; return k0 + f * (k1 - k0); }
+  return s[s.length-1][0];
+}
+function ensureGainCum() {               // cumulatieve stijging/daling langs de route (gesmoothd)
+  if (anaGainCum || !gradientPts || gradientPts.length < 2) return;
+  const n = gradientPts.length;
+  anaGainDist = new Float64Array(n); anaGainCum = new Float64Array(n); anaLossCum = new Float64Array(n);
+  const ele = gradientPts.map((p, i) => { const a = Math.max(0, i-2), b = Math.min(n-1, i+2); let s = 0; for (let j = a; j <= b; j++) s += gradientPts[j][2]; return s / (b-a+1); });
+  let cum = 0, g = 0, l = 0;
+  for (let i = 1; i < n; i++) { cum += hav(gradientPts[i-1], gradientPts[i]); anaGainDist[i] = cum; const d = ele[i] - ele[i-1]; if (d > 0) g += d; else l -= d; anaGainCum[i] = g; anaLossCum[i] = l; }
+}
+function gainLossBetween(a, b) {
+  ensureGainCum();
+  if (!anaGainCum) return { gain: 0, loss: 0 };
+  const idx = km => { let lo = 0, hi = anaGainDist.length - 1; while (lo < hi) { const m = (lo+hi)>>1; if (anaGainDist[m] < km) lo = m+1; else hi = m; } return lo; };
+  const ia = Math.max(0, idx(a)), ib = Math.max(ia, idx(b));
+  return { gain: anaGainCum[ib] - anaGainCum[ia], loss: anaLossCum[ib] - anaLossCum[ia] };
+}
+function anaDur(ms) { if (ms == null || ms < 0) return '–'; const h = Math.floor(ms/3600000), m = Math.round((ms%3600000)/60000); return h > 0 ? `${h}u ${String(m).padStart(2,'0')}m` : `${m}m`; }
+const ANA_TZ = () => raceConfig?.localTz || 'America/Denver';
+function localDayKey(ts) { return new Intl.DateTimeFormat('en-CA', { timeZone: ANA_TZ(), year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(ts)); }
+function localDayLabel(key) { const [y,m,d] = key.split('-'); return new Intl.DateTimeFormat('nl-NL', { weekday:'short', day:'numeric', month:'short' }).format(new Date(+y, +m-1, +d)); }
+function localClock(ts) { return new Intl.DateTimeFormat('nl-NL', { timeZone: ANA_TZ(), hour:'2-digit', minute:'2-digit' }).format(new Date(ts)); }
+function anaDateShort(ts) { return new Intl.DateTimeFormat('nl-NL', { timeZone: ANA_TZ(), day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }).format(new Date(ts)); }
+
+async function openAnalyse() {
+  if (!SLUG) return;
+  document.getElementById('ana-modal').style.display = 'flex';
+  document.getElementById('ana-body').innerHTML = '<div class="ana-empty">⏳ Laden…</div>';
+  await anaEnsureData();
+  if (!anaRiderId) { const a = anaActiveSorted(); anaRiderId = a.length ? String(a[0].deviceId) : null; }
+  anaRender();
+}
+function closeAnalyse() { document.getElementById('ana-modal').style.display = 'none'; }
+async function anaEnsureData() {
+  const jobs = [];
+  if (!riderHistoryCache) jobs.push(fetch(`${API}/api/fmc/${RC}/history`).then(r => r.ok ? r.json() : null).then(d => { if (d) riderHistoryCache = d; }).catch(()=>{}));
+  if (!tlflowData)        jobs.push(fetch(`${API}/api/fmc/${RC}/tlflow`).then(r => r.ok ? r.json() : null).then(d => { if (d) tlflowData = d; }).catch(()=>{}));
+  if (!gradientPts)       jobs.push(fetch(`${API}/${SLUG}/route-gradient.json`).then(r => r.ok ? r.json() : null).then(d => { if (d) gradientPts = d; }).catch(()=>{}));
+  await Promise.all(jobs);
+}
+function anaSwitch(sec) { anaSection = sec; document.querySelectorAll('#ana-tabs .rf-tb-btn').forEach(b => b.classList.toggle('active', b.dataset.sec === sec)); anaRender(); }
+
+function anaRiderPicker(lbl) {
+  const opts = anaActiveSorted().map(r => `<option value="${r.deviceId}"${String(r.deviceId) === String(anaRiderId) ? ' selected' : ''}>${r.name}</option>`).join('');
+  return `<label>${lbl}</label><select onchange="anaRiderId=this.value;anaRender()">${opts}</select>`;
+}
+function anaGhostPicker() {
+  if (!ghostData || !ghostData.length) return '';
+  const opts = ghostData.map((g, i) => `<option value="${i}"${i === anaGhostIdx ? ' selected' : ''}>${g.label} — ${g.name}</option>`).join('');
+  return `<label>Record:</label><select onchange="anaGhostIdx=+this.value;anaRender()">${opts}</select>`;
+}
+function anaSplitControls() {
+  const total = Math.round((routeCum && routeCum.length) ? routeCum[routeCum.length-1] : 4310);
+  if (!anaSplitB) anaSplitB = Math.min(total, 100);
+  return `<label>Van km</label><input type="number" id="ana-a" value="${Math.round(anaSplitA)}" min="0" max="${total}" style="width:80px">
+    <label>tot km</label><input type="number" id="ana-b" value="${Math.round(anaSplitB)}" min="0" max="${total}" style="width:80px">
+    <button class="ana-go" onclick="anaSplitA=Math.max(0,+document.getElementById('ana-a').value);anaSplitB=+document.getElementById('ana-b').value;anaRender()">Bereken</button>`;
+}
+function anaRender() {
+  const ctr = document.getElementById('ana-controls'), body = document.getElementById('ana-body');
+  if (!ctr || !body) return;
+  if (anaSection === 'dagboek')      { ctr.innerHTML = anaRiderPicker('Rijder:'); body.innerHTML = renderDagboek(anaRiderId); }
+  else if (anaSection === 'splits')  { ctr.innerHTML = anaSplitControls();         body.innerHTML = renderSplits(anaSplitA, anaSplitB); }
+  else if (anaSection === 'ghost')   { ctr.innerHTML = anaRiderPicker('Rijder:') + anaGhostPicker(); body.innerHTML = renderGhost(anaRiderId, anaGhostIdx); }
+  else if (anaSection === 'veld')    { ctr.innerHTML = ''; body.innerHTML = renderVeld(); }
+}
+
+function renderDagboek(id) {
+  const s = riderHistoryCache?.[String(id)];
+  if (!s || s.length < 2) return `<div class="ana-empty">Nog geen geschiedenis voor deze rijder.</div>`;
+  const REST = 2.5, days = {};
+  for (let i = 1; i < s.length; i++) {
+    const [k0, t0] = s[i-1], [k1, t1] = s[i]; const dt = t1 - t0; if (dt <= 0) continue;
+    const dkm = Math.max(0, k1 - k0), sp = dkm / (dt/3600000), key = localDayKey(t0);
+    const d = days[key] || (days[key] = { km:0, mov:0, rest:0, sk:k0, ek:k1, st:t0, et:t1 });
+    d.km += dkm; d.ek = k1; d.et = t1;
+    if (sp < REST) d.rest += dt; else d.mov += dt;
+  }
+  const keys = Object.keys(days).sort();
+  if (!keys.length) return `<div class="ana-empty">Nog geen dagdata.</div>`;
+  let tk = 0, tmov = 0, trest = 0, tgain = 0;
+  const rows = keys.map(key => {
+    const d = days[key], gl = gainLossBetween(d.sk, d.ek);
+    tk += d.km; tmov += d.mov; trest += d.rest; tgain += gl.gain;
+    const avg = d.mov > 0 ? d.km / (d.mov/3600000) : 0;
+    return `<tr><td class="l">${localDayLabel(key)}</td><td>${d.km.toFixed(1)}</td><td>${anaDur(d.mov)}</td><td>${anaDur(d.rest)}</td><td>${avg.toFixed(1)}</td><td>${Math.round(gl.gain).toLocaleString('nl-NL')}</td><td class="l" style="color:var(--muted)">${localClock(d.st)}→${localClock(d.et)}</td></tr>`;
+  }).join('');
+  const tavg = tmov > 0 ? tk / (tmov/3600000) : 0;
+  return `<div class="ana-h2">${anaRiderName(id)} — dagboek <span class="ana-sub" style="display:inline">· tijden in ${raceConfig?.localTzLabel || 'lokale tijd'}</span></div>
+    <table class="ana-table"><thead><tr><th class="l">Dag</th><th>Afstand (km)</th><th>Bewegend</th><th>Rust</th><th>Gem. (km/u)</th><th>Klim (m)</th><th class="l">Rijvenster</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td class="l">Totaal</td><td>${tk.toFixed(0)}</td><td>${anaDur(tmov)}</td><td>${anaDur(trest)}</td><td>${tavg.toFixed(1)}</td><td>${Math.round(tgain).toLocaleString('nl-NL')}</td><td></td></tr></tfoot></table>
+    <div class="ana-sub">Rust = tijd met snelheid &lt; ${REST} km/u (slaap + pauzes). Gem. = snelheid tijdens bewegen. Klim = hoogtemeters op het die dag afgelegde stuk.</div>`;
+}
+
+function renderSplits(a, b) {
+  if (!(b > a)) return `<div class="ana-empty">Kies een geldig bereik (tot &gt; van).</div>`;
+  const rows = [];
+  for (const r of anaRidersAll()) {
+    if (r.scratched) continue;
+    const s = anaSeries(String(r.deviceId)); if (!s) continue;
+    const tA = histTimeAtKm(s, a), tB = histTimeAtKm(s, b);
+    if (tA == null || tB == null || tB <= tA) continue;
+    const ms = tB - tA; rows.push({ name: r.name, color: r.riderColor || '#888', ms, sp: (b-a)/(ms/3600000), tB });
+  }
+  for (const g of ghostData || []) {
+    const hA = ghostHrsAtKm(g.points, a), hB = ghostHrsAtKm(g.points, b);
+    if (hA == null || hB == null || hB <= hA) continue;
+    rows.push({ name: g.label + ' (record)', color: g.color, ms: (hB-hA)*3600000, sp: (b-a)/(hB-hA), ghost: true });
+  }
+  if (!rows.length) return `<div class="ana-empty">Nog niemand heeft dit hele stuk afgelegd.</div>`;
+  rows.sort((x, y) => x.ms - y.ms);
+  const best = rows[0].ms;
+  const body = rows.map((r, i) => `<tr><td>${i+1}</td><td class="l"><span class="ana-dot" style="background:${r.color}"></span>${r.name}</td><td>${anaDur(r.ms)}</td><td>${r.sp.toFixed(1)}</td><td class="${i ? 'ana-neg' : ''}">${i ? '+' + anaDur(r.ms - best) : '—'}</td><td class="l" style="color:var(--muted)">${r.tB ? anaDateShort(r.tB) : ''}</td></tr>`).join('');
+  return `<div class="ana-h2">Splittijd km ${Math.round(a)} → ${Math.round(b)} <span class="ana-sub" style="display:inline">· ${(b-a).toFixed(0)} km</span></div>
+    <table class="ana-table"><thead><tr><th>#</th><th class="l">Rijder</th><th>Tijd</th><th>Gem. (km/u)</th><th>t.o.v. #1</th><th class="l">Bij km ${Math.round(b)}</th></tr></thead><tbody>${body}</tbody></table>
+    <div class="ana-sub">Alleen rijders die het hele stuk al gereden hebben. Top-15 op TrackLeaders-resolutie, overige op 5-minuten-data.</div>`;
+}
+
+function renderGhost(id, gi) {
+  const g = (ghostData || [])[gi];
+  if (!g) return `<div class="ana-empty">Geen record-data beschikbaar.</div>`;
+  const s = anaSeries(String(id));
+  if (!s || !s.length) return `<div class="ana-empty">Nog geen geschiedenis voor deze rijder.</div>`;
+  const raceStart = tlflowData?.rstarttime || RACE_START.getTime();
+  const curKm = s[s.length-1][0], curTs = s[s.length-1][1], curH = (curTs - raceStart)/3600000;
+  const ghKmNow = ghostKmAt(g.points, curH);
+  const dKm = ghKmNow != null ? curKm - ghKmNow : null;
+  const ghHrsAtCur = ghostHrsAtKm(g.points, curKm);
+  const dHrs = ghHrsAtCur != null ? (ghHrsAtCur - curH) : null;   // > 0 = rijder sneller (vóór op schema)
+  const rows = [];
+  for (let km = 250; km <= curKm + 1; km += 250) {
+    const tR = histTimeAtKm(s, km); if (tR == null) continue;
+    const hR = (tR - raceStart)/3600000, hG = ghostHrsAtKm(g.points, km); if (hG == null) continue;
+    const diff = hG - hR;
+    rows.push(`<tr><td>${km}</td><td>${anaDur(hR*3600000)}</td><td>${anaDur(hG*3600000)}</td><td class="${diff >= 0 ? 'ana-pos' : 'ana-neg'}">${diff >= 0 ? '−' : '+'}${anaDur(Math.abs(diff)*3600000)}</td></tr>`);
+  }
+  const kmTxt = dKm == null ? '–' : (dKm >= 0 ? `<span class="ana-pos">${dKm.toFixed(1)} km vóór</span>` : `<span class="ana-neg">${Math.abs(dKm).toFixed(1)} km achter</span>`);
+  const hrTxt = dHrs == null ? '–' : (dHrs >= 0 ? `<span class="ana-pos">${anaDur(dHrs*3600000)} vóór</span>` : `<span class="ana-neg">${anaDur(-dHrs*3600000)} achter</span>`);
+  return `<div class="ana-h2">${anaRiderName(id)} vs ${g.label} — ${g.name}</div>
+    <div class="ana-sub">Op km ${Math.round(curKm)}: in afstand ${kmTxt} · in tijd ${hrTxt} op het recordschema.</div>
+    <table class="ana-table"><thead><tr><th>km</th><th>Tijd rijder</th><th>Tijd record</th><th>Verschil</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="4" class="ana-empty">Nog te weinig data.</td></tr>'}</tbody></table>
+    <div class="ana-sub">Verschil groen (−tijd) = sneller dan het record op dat punt, rood (+tijd) = langzamer.</div>`;
+}
+
+function renderVeld() {
+  const act = anaActiveSorted();
+  if (!act.length) return `<div class="ana-empty">Geen actieve rijders.</div>`;
+  const total = (routeCum && routeCum.length) ? routeCum[routeCum.length-1] : 4310;
+  const leader = act[0], leaderKm = leader.distanceOnTrack || 0, leaderS = anaSeries(String(leader.deviceId)), now = Date.now();
+  const ago = now - 24*3600000, kmAgo = {};
+  act.forEach(r => { const s = riderHistoryCache?.[String(r.deviceId)]; kmAgo[r.deviceId] = s ? (histKmAtTime(s, ago) ?? 0) : 0; });
+  const rank24 = [...act].sort((a, b) => kmAgo[b.deviceId] - kmAgo[a.deviceId]).map(r => String(r.deviceId));
+  const N = Math.min(40, act.length);
+  let rows = '';
+  for (let i = 0; i < N; i++) {
+    const r = act[i], id = String(r.deviceId), km = r.distanceOnTrack || 0, gapKm = leaderKm - km;
+    let behind = '–';
+    if (i === 0) behind = '—';
+    else if (leaderS) { const tL = histTimeAtKm(leaderS, km); if (tL != null) behind = anaDur(now - tL); }
+    const ovr = r._mstats ? r._mstats.avgOverallKmh : 0;
+    const eta = km >= total ? 'finish' : (ovr > 0 ? new Intl.DateTimeFormat('nl-NL', { day:'numeric', month:'short' }).format(new Date(now + (total-km)/ovr*3600000)) : '–');
+    const prev = rank24.indexOf(id), dRank = prev >= 0 ? prev - i : 0;
+    const dr = dRank > 0 ? `<span class="ana-pos">▲${dRank}</span>` : dRank < 0 ? `<span class="ana-neg">▼${-dRank}</span>` : '·';
+    rows += `<tr><td>${i+1}</td><td class="l"><span class="ana-dot" style="background:${r.riderColor || '#888'}"></span>${r.name}</td><td>${km.toFixed(1)}</td><td>${i ? '+' + gapKm.toFixed(1) : '—'}</td><td>${behind}</td><td>${dr}</td><td class="l" style="color:var(--muted)">${eta}</td></tr>`;
+  }
+  const bin = 200, bins = {}; let maxC = 0;
+  anaRidersAll().filter(r => !r.scratched).forEach(r => { const b = Math.floor((r.distanceOnTrack || 0)/bin); bins[b] = (bins[b]||0)+1; if (bins[b] > maxC) maxC = bins[b]; });
+  let bars = '';
+  for (let b = 0; b*bin < total; b++) { const c = bins[b] || 0; bars += `<div class="ana-bar-row"><div class="ana-bar-lbl">${b*bin}–${(b+1)*bin}</div><div class="ana-bar-track"><div class="ana-bar-fill" style="width:${maxC ? c/maxC*100 : 0}%"></div></div><div class="ana-bar-val">${c}</div></div>`; }
+  return `<div class="ana-h2">Klassement &amp; gaps <span class="ana-sub" style="display:inline">· top ${N}</span></div>
+    <table class="ana-table"><thead><tr><th>#</th><th class="l">Rijder</th><th>km</th><th>Gap (km)</th><th>Achter leider</th><th>24u</th><th class="l">ETA finish</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="ana-h2">Spreiding van het veld <span class="ana-sub" style="display:inline">· actieve rijders per 200 km</span></div>${bars}
+    <div class="ana-sub">"Achter leider" = hoelang geleden de leider op die km-stand stond. 24u = plaatsen gewonnen/verloren t.o.v. 24 uur geleden. ETA = projectie op het gemiddelde tempo tot nu toe.</div>`;
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────
