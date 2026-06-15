@@ -3087,12 +3087,17 @@ function renderDagboek(id) {
   const s = riderHistoryCache?.[String(id)];
   if (!s || s.length < 2) return `<div class="ana-empty">Nog geen geschiedenis voor deze rijder.</div>`;
   const REST = 2.5, days = {};
+  const wEnd = s[s.length-1][1];
+  const wStart = (anaDgbWin === Infinity) ? s[0][1] : Math.max(s[0][1], wEnd - anaDgbWin);
   for (let i = 1; i < s.length; i++) {
     const [k0, t0] = s[i-1], [k1, t1] = s[i]; const dt = t1 - t0; if (dt <= 0) continue;
-    const dkm = Math.max(0, k1 - k0), sp = dkm / (dt/3600000), key = localDayKey(t0);
-    const d = days[key] || (days[key] = { km:0, mov:0, rest:0, sk:k0, ek:k1, st:t0, et:t1 });
-    d.km += dkm; d.ek = k1; d.et = t1;
-    if (sp < REST) d.rest += dt; else d.mov += dt;
+    const a = Math.max(wStart, t0), b = Math.min(wEnd, t1); if (b <= a) continue;  // alleen binnen de gekozen periode
+    const sp = Math.max(0, k1 - k0) / (dt/3600000);                                // snelheid van het hele interval
+    const kmA = k0 + (k1-k0)*((a-t0)/dt), kmB = k0 + (k1-k0)*((b-t0)/dt);          // km op de geklemde randen
+    const key = localDayKey(a);
+    const d = days[key] || (days[key] = { km:0, mov:0, rest:0, sk:kmA, ek:kmB, st:a, et:b });
+    d.km += Math.max(0, kmB - kmA); d.ek = kmB; d.et = b;
+    if (sp < REST) d.rest += (b - a); else d.mov += (b - a);
   }
   const keys = Object.keys(days).sort();
   if (!keys.length) return `<div class="ana-empty">Nog geen dagdata.</div>`;
@@ -3113,11 +3118,25 @@ function renderDagboek(id) {
       <span><span class="ana-dot" style="background:#cbd5e1"></span>korte stop</span>
       <span style="color:var(--muted)">— lijn = afgelegde km</span>
     </div>
-    <div class="ana-h2">Dagboek <span class="ana-sub" style="display:inline">· tijden in ${raceConfig?.localTzLabel || 'lokale tijd'}</span></div>
+    <div class="ana-h2">Dagboek <span class="ana-sub" style="display:inline">· ${anaDgbWin === Infinity ? 'hele race' : 'binnen de gekozen periode'} · tijden in ${raceConfig?.localTzLabel || 'lokale tijd'}</span></div>
     <table class="ana-table"><thead><tr><th class="l">Dag</th><th>Afstand (km)</th><th>Bewegend</th><th>Rust</th><th>Gem. (km/u)</th><th>Klim (m)</th><th class="l">Rijvenster</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td class="l">Totaal</td><td>${tk.toFixed(0)}</td><td>${anaDur(tmov)}</td><td>${anaDur(trest)}</td><td>${tavg.toFixed(1)}</td><td>${Math.round(tgain).toLocaleString('nl-NL')}</td><td></td></tr></tfoot></table>
     <div class="ana-sub">Rust = tijd met snelheid &lt; ${REST} km/u (slaap + pauzes). Gem. = snelheid tijdens bewegen. Klim = hoogtemeters op het die dag afgelegde stuk.</div>`;
+}
+
+let dgbHoverT = null, dgbGeom = null;   // hover-uitlezing op de timeline
+function histSpeedAtTime(s, t) {        // snelheid (km/u) op tijdstip t
+  if (!s || s.length < 2) return 0;
+  if (t <= s[0][1]) t = s[0][1];
+  for (let i = 1; i < s.length; i++) if (s[i][1] >= t) { const [k0, t0] = s[i-1], [k1, t1] = s[i]; const dt = t1 - t0; return dt > 0 ? Math.max(0, k1 - k0) / (dt/3600000) : 0; }
+  return 0;
+}
+function dgbSetHover(px) {
+  if (!dgbGeom) return;
+  const f = Math.max(0, Math.min(1, (px - dgbGeom.padL) / dgbGeom.plotW));
+  dgbHoverT = dgbGeom.start + f * dgbGeom.span;
+  drawDagboekTimeline(anaRiderId);
 }
 
 // Activiteiten-timeline: bewegend vs stops over een instelbaar venster, met km-lijn
@@ -3138,6 +3157,11 @@ function drawDagboekTimeline(id) {
   const xT = t => padL + (t - start) / span * plotW;
   const H1 = 3600000, D1 = 86400000;
   const REST = 2.5;
+  dgbGeom = { start, span, padL, plotW };
+  cv.onmousemove = e => { const r = cv.getBoundingClientRect(); dgbSetHover(e.clientX - r.left); };
+  cv.onmouseleave = () => { dgbHoverT = null; drawDagboekTimeline(anaRiderId); };
+  cv.ontouchstart = cv.ontouchmove = e => { e.preventDefault(); const r = cv.getBoundingClientRect(); dgbSetHover(e.touches[0].clientX - r.left); };
+  cv.ontouchend = () => { dgbHoverT = null; drawDagboekTimeline(anaRiderId); };
 
   // km-bereik in dit venster (voor de km-lijn)
   let kmLo = histKmAtTime(s, start), kmHi = histKmAtTime(s, end);
@@ -3207,6 +3231,18 @@ function drawDagboekTimeline(id) {
 
   // lane-rand
   ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 1; ctx.strokeRect(padL, laneTop, plotW, laneH);
+
+  // hover-uitlezing: tijd + km + snelheid onder de cursor
+  if (dgbHoverT != null && dgbHoverT >= start && dgbHoverT <= end) {
+    const x = xT(dgbHoverT), km = histKmAtTime(s, dgbHoverT), sp = histSpeedAtTime(s, dgbHoverT);
+    ctx.strokeStyle = 'rgba(28,38,53,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, laneTop - 4); ctx.lineTo(x, laneTop + laneH); ctx.stroke();
+    ctx.fillStyle = '#1c2635'; ctx.beginPath(); ctx.arc(x, yKm(km), 3, 0, Math.PI*2); ctx.fill();
+    const txt = `${anaDateShort(dgbHoverT)} · ${km.toFixed(1)} km · ${sp.toFixed(1)} km/u${sp < REST ? ' · gestopt' : ''}`;
+    const tw = ctx.measureText(txt).width;
+    let bx = x + 6; if (bx + tw + 8 > W) bx = x - tw - 14; bx = Math.max(2, bx);
+    ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.fillRect(bx, 17, tw + 8, 15);
+    ctx.fillStyle = '#1c2635'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(txt, bx + 4, 19);
+  }
 }
 
 function renderSplits(a, b) {
