@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Webcams beheren (privé)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --teal:#14b8a6; --navy:#1c2635; --border:#dfe5ea; --muted:#6b7280; --red:#c0392b; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { font-family:-apple-system,Segoe UI,Roboto,sans-serif; color:var(--navy); background:#f3f5f7; display:flex; flex-direction:column; }
+  header { background:#fff; border-bottom:1px solid var(--border); padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  .sp { flex:1; }
+  input, button { font-size:13px; }
+  input[type=text], input[type=password], input[type=number], textarea { padding:7px 9px; border:1px solid var(--border); border-radius:7px; width:100%; }
+  button { padding:8px 12px; border-radius:7px; border:1px solid var(--border); background:#fff; cursor:pointer; }
+  button.primary { background:var(--teal); color:#fff; border-color:var(--teal); font-weight:700; }
+  #status { font-size:12px; color:var(--muted); }
+  #main { flex:1; display:flex; min-height:0; }
+  #map { flex:1; min-width:0; background:#e8eef0; cursor:crosshair; }
+  #side { width:400px; max-width:46vw; flex-shrink:0; border-left:1px solid var(--border); background:#fff; overflow-y:auto; padding:16px; }
+  @media (max-width:760px){ #main{flex-direction:column} #side{width:auto;max-width:none;border-left:0;border-top:1px solid var(--border);max-height:60%} }
+  .fld { margin-bottom:10px; }
+  .fld label { display:block; font-size:11px; font-weight:700; color:var(--muted); margin-bottom:3px; }
+  .row2 { display:flex; gap:8px; }
+  .preview { width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; margin:8px 0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .preview video, .preview iframe, .preview img { width:100%; height:100%; object-fit:contain; border:0; }
+  .preview .ph { color:#888; font-size:12px; }
+  h3 { font-size:13px; margin:18px 0 8px; }
+  .cam { display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--border); font-size:13px; }
+  .cam .t { flex:1; min-width:0; }
+  .cam .t small { color:var(--muted); }
+  .cam .src { font-size:9px; font-weight:700; padding:1px 5px; border-radius:4px; color:#fff; background:#7c3aed; }
+  .cam button { padding:4px 8px; color:var(--red); border-color:var(--red); }
+  .hint { font-size:11px; color:var(--muted); margin-top:4px; }
+  .keybar { background:#fff8e1; border:1px solid #ffe08a; border-radius:8px; padding:8px 10px; margin-bottom:12px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📷 Webcams beheren <span style="font-size:11px;color:var(--red)">(privé — niet delen)</span></h1>
+  <span class="sp"></span>
+  <span id="status"></span>
+</header>
+<div id="main">
+  <div id="map"></div>
+  <div id="side">
+    <div class="keybar">
+      <label style="font-weight:700">Admin-sleutel</label>
+      <input type="password" id="key" placeholder="je WEBCAM_ADMIN_KEY" oninput="saveKey(this.value)">
+      <div class="hint">Wordt lokaal in deze browser bewaard. Nodig om cams toe te voegen/verwijderen.</div>
+    </div>
+
+    <h3>➕ Camera toevoegen</h3>
+    <div class="fld"><label>Naam</label><input type="text" id="f-title" placeholder='bv. "Ovando — Town Square"' oninput="renderPreview()"></div>
+    <div class="fld"><label>Stream-URL (.m3u8 HLS, YouTube-link, of webpagina)</label>
+      <input type="text" id="f-url" placeholder="https://…/stream.m3u8  of  youtube.com/watch?v=…" oninput="renderPreview()"></div>
+    <div class="preview" id="preview"><span class="ph">voorvertoning verschijnt hier</span></div>
+    <div class="row2">
+      <div class="fld" style="flex:1"><label>Lat</label><input type="number" id="f-lat" step="0.0001" oninput="placeFromInputs()"></div>
+      <div class="fld" style="flex:1"><label>Lon</label><input type="number" id="f-lon" step="0.0001" oninput="placeFromInputs()"></div>
+    </div>
+    <div class="hint">📍 Klik op de kaart om de locatie te zetten (of vul lat/lon in).</div>
+    <div class="fld" style="margin-top:10px"><label>Notitie (optioneel)</label><input type="text" id="f-note" placeholder="bv. 'toont town square waar renners stoppen'"></div>
+    <button class="primary" style="width:100%" onclick="addCam()">Toevoegen &amp; publiceren op kaart</button>
+
+    <h3>Op de kaart (gepubliceerd)</h3>
+    <div id="list"><div class="hint">laden…</div></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script>
+const API='https://tracker.klikschaak.nl', RACE='tourdivide26', SLUG='tour-divide-2026';
+let map, placeMarker=null, camLayer;
+function setStatus(t){ document.getElementById('status').textContent=t; }
+function adminKey(){ return localStorage.getItem('wc_admin_key')||''; }
+function saveKey(v){ localStorage.setItem('wc_admin_key', v.trim()); }
+function hdrs(){ const h={'Content-Type':'application/json'}; if(adminKey()) h['x-admin-key']=adminKey(); return h; }
+function esc(s){ return (s||'').toString().replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+
+async function initMap(){
+  map=L.map('map').setView([46.9,-113], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  camLayer=L.layerGroup().addTo(map);
+  try{ const r=await fetch(`${API}/${SLUG}/route.json`); if(r.ok){ const pts=await r.json(); const line=L.polyline(pts,{color:'#b90a0a',weight:3,opacity:.85}).addTo(map); map.fitBounds(line.getBounds(),{padding:[20,20]}); } }catch(e){}
+  map.on('click', e=>setPlace(e.latlng.lat, e.latlng.lng));
+}
+function setPlace(lat,lon){
+  document.getElementById('f-lat').value=lat.toFixed(5);
+  document.getElementById('f-lon').value=lon.toFixed(5);
+  if(!placeMarker) placeMarker=L.circleMarker([lat,lon],{radius:8,color:'#fff',weight:2,fillColor:'#ffbc00',fillOpacity:1}).addTo(map);
+  else placeMarker.setLatLng([lat,lon]);
+}
+function placeFromInputs(){
+  const lat=parseFloat(document.getElementById('f-lat').value), lon=parseFloat(document.getElementById('f-lon').value);
+  if(isFinite(lat)&&isFinite(lon)) setPlace(lat,lon);
+}
+
+function detectMedia(url){
+  url=(url||'').trim();
+  const yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
+  if(yt) return {type:'youtube', embed:`https://www.youtube.com/embed/${yt[1]}`};
+  if(/\.m3u8(\?|$)/i.test(url)) return {type:'hls', url};
+  if(/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) return {type:'img', url};
+  return {type:'none'};
+}
+function renderPreview(){
+  const url=document.getElementById('f-url').value;
+  const m=detectMedia(url);
+  const p=document.getElementById('preview');
+  if(m.type==='hls'){ p.innerHTML='<video id="pv" controls autoplay muted playsinline></video>'; const v=document.getElementById('pv'); if(v.canPlayType('application/vnd.apple.mpegurl')) v.src=m.url; else if(window.Hls){ const h=new Hls(); h.loadSource(m.url); h.attachMedia(v);} }
+  else if(m.type==='youtube'){ p.innerHTML=`<iframe src="${m.embed}?autoplay=1&mute=1" allow="autoplay; fullscreen"></iframe>`; }
+  else if(m.type==='img'){ p.innerHTML=`<img src="${esc(url)}" alt="">`; }
+  else { p.innerHTML='<span class="ph">geen directe stream herkend — wordt als link opgeslagen</span>'; }
+}
+
+async function addCam(){
+  if(!adminKey()){ setStatus('⚠ vul eerst de admin-sleutel in'); return; }
+  const title=document.getElementById('f-title').value.trim();
+  const url=document.getElementById('f-url').value.trim();
+  const lat=parseFloat(document.getElementById('f-lat').value), lon=parseFloat(document.getElementById('f-lon').value);
+  const note=document.getElementById('f-note').value.trim();
+  if(!title){ setStatus('⚠ naam ontbreekt'); return; }
+  if(!isFinite(lat)||!isFinite(lon)){ setStatus('⚠ klik op de kaart voor de locatie'); return; }
+  setStatus('toevoegen…');
+  try{
+    const r=await fetch(`${API}/api/webcams/manual?race=${RACE}&publish=1`,{method:'POST',headers:hdrs(),body:JSON.stringify({title,url,lat,lon,note})});
+    const j=await r.json();
+    if(j.error){ setStatus('⚠ '+j.error); return; }
+    setStatus(`✓ "${title}" toegevoegd op km ${j.added.routeKm} — staat nu op de kaart`);
+    document.getElementById('f-title').value=''; document.getElementById('f-url').value=''; document.getElementById('f-note').value='';
+    renderPreview(); loadList();
+  }catch(e){ setStatus('⚠ '+e.message); }
+}
+
+async function loadList(){
+  try{
+    const cams=((await (await fetch(`${API}/api/webcams/curated?race=${RACE}`)).json()).webcams)||[];
+    camLayer.clearLayers();
+    cams.forEach(c=>{ if(c.lat!=null&&c.lon!=null) L.marker([c.lat,c.lon],{icon:L.divIcon({className:'',html:'📷',iconSize:[22,22]})}).bindTooltip(c.title).addTo(camLayer); });
+    const el=document.getElementById('list');
+    if(!cams.length){ el.innerHTML='<div class="hint">nog geen gepubliceerde cams</div>'; return; }
+    cams.sort((a,b)=>(a.routeKm||0)-(b.routeKm||0));
+    el.innerHTML=cams.map(c=>`<div class="cam">
+      <div class="t">${esc(c.title||'Webcam')} ${c.source==='manual'?'<span class="src">handmatig</span>':''}<br><small>km ${c.routeKm??'?'} · ${esc([c.city,c.region].filter(Boolean).join(', '))}</small></div>
+      <button onclick="removeCam('${esc(String(c.id))}')">verwijder</button>
+    </div>`).join('');
+  }catch(e){ document.getElementById('list').innerHTML='<div class="hint">⚠ '+e.message+'</div>'; }
+}
+async function removeCam(id){
+  if(!adminKey()){ setStatus('⚠ vul eerst de admin-sleutel in'); return; }
+  if(!confirm('Deze cam van de kaart verwijderen?')) return;
+  try{
+    // handmatige cams via /manual (ruimt ook curated op), overige via /curated
+    const ep = id.startsWith('m:') ? 'manual' : 'curated';
+    const r=await fetch(`${API}/api/webcams/${ep}?race=${RACE}&id=${encodeURIComponent(id)}`,{method:'DELETE',headers:hdrs()});
+    const j=await r.json();
+    if(j.error){ setStatus('⚠ '+j.error); return; }
+    setStatus('✓ verwijderd'); loadList();
+  }catch(e){ setStatus('⚠ '+e.message); }
+}
+
+document.getElementById('key').value=adminKey();
+initMap().then(loadList);
+</script>
+</body>
+</html>

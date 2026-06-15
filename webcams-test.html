@@ -55,6 +55,7 @@
   <span id="status">laden…</span>
   <span id="progress"></span>
   <span class="sp"></span>
+  <input id="adminkey" type="password" placeholder="admin-key" style="width:120px;padding:5px 7px;border:1px solid var(--border);border-radius:6px" oninput="localStorage.setItem('wc_admin_key',this.value.trim())" title="WEBCAM_ADMIN_KEY — nodig om op te slaan">
   <label style="font-size:12px;color:var(--muted)">vanaf km <input id="fromkm" type="number" min="0" step="10" value="850" style="width:72px;padding:5px 6px;border:1px solid var(--border);border-radius:6px" oninput="setFromKm(this.value)"></label>
   <button onclick="fromLeader()" title="Zet de ondergrens op de huidige koppositie">📍 leider</button>
   <button id="add-btn" onclick="toggleAddMode()">➕ Toevoegen</button>
@@ -82,6 +83,7 @@ let map, markers = {}, curIdx = -1;
 const COL = { kept:'#14b8a6', dropped:'#9aa3ad', todo:'#2563eb' };
 function statusOf(id) { return selected.has(id) ? 'kept' : dropped.has(id) ? 'dropped' : 'todo'; }
 function setStatus(t) { document.getElementById('status').textContent = t; }
+function hdrs() { const h = { 'Content-Type': 'application/json' }; const k = localStorage.getItem('wc_admin_key'); if (k) h['x-admin-key'] = k; return h; }
 function esc(s){ return (s||'').toString().replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
 
 function updateProgress() {
@@ -255,7 +257,7 @@ async function onMapClick(e) {
   setStatus('toevoegen…');
   try {
     const r = await fetch(`${API}/api/webcams/manual?race=${RACE}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers: hdrs(),
       body: JSON.stringify({ title, url, lat: e.latlng.lat, lon: e.latlng.lng })
     });
     const j = await r.json();
@@ -273,7 +275,7 @@ async function onMapClick(e) {
 async function delManual(id) {
   if (!confirm('Deze handmatige cam verwijderen?')) return false;
   try {
-    await fetch(`${API}/api/webcams/manual?race=${RACE}&id=${encodeURIComponent(id)}`, { method:'DELETE' });
+    await fetch(`${API}/api/webcams/manual?race=${RACE}&id=${encodeURIComponent(id)}`, { method:'DELETE', headers: hdrs() });
     selected.delete(id); dropped.delete(id);
     const ai = allCams.findIndex(c => c.id === id);
     if (ai >= 0) allCams.splice(ai, 1);
@@ -290,12 +292,13 @@ async function save() {
   });
   setStatus('opslaan…');
   try {
-    const r = await fetch(`${API}/api/webcams/curated?race=${RACE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const r = await fetch(`${API}/api/webcams/curated?race=${RACE}`, { method:'POST', headers: hdrs(), body:JSON.stringify(payload) });
     const j = await r.json();
     setStatus(j.error ? '⚠ ' + j.error : `✓ ${j.saved} cams opgeslagen — staan nu op de kaart`);
   } catch(e) { setStatus('⚠ ' + e.message); }
 }
 
+document.getElementById('adminkey').value = localStorage.getItem('wc_admin_key') || '';
 initMap().then(() => scan(false));
 </script>
 </body>

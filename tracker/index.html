@@ -175,6 +175,9 @@
     .cam-pop .cam-pop-l { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
     .cam-pop img, .cam-pop-v, .cam-pop-if { width: 100%; border-radius: 6px; margin: 4px 0; display: block; }
     .cam-pop-v, .cam-pop-if { aspect-ratio: 16/9; border: 0; background: #000; }
+    #cam-stage { width: 100%; aspect-ratio: 16/9; background: #000; display: flex; align-items: center; justify-content: center; }
+    #cam-stage video, #cam-stage iframe, #cam-stage img { width: 100%; height: 100%; object-fit: contain; border: 0; display: block; }
+    #cam-stage .cam-none { color: var(--muted); font-size: 13px; }
     .cam-pop .cam-pop-n { font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px; }
     .leaflet-control-scale-line {
       background: rgba(255,255,255,.85); border: 1px solid var(--navy); border-top: none;
@@ -609,6 +612,23 @@
     <canvas id="raceflow-canvas" height="380"></canvas>
     <div id="raceflow-legend"></div>
     <div id="raceflow-status"></div>
+  </div>
+</div>
+
+<div id="cam-modal" class="chart-modal" style="display:none" onclick="if(event.target===this)closeCamViewer()">
+  <div class="chart-inner" style="width:min(96vw,920px)">
+    <div class="chart-hdr">
+      <span id="cam-title">Webcam</span>
+      <button class="chart-close" onclick="closeCamViewer()">✕</button>
+    </div>
+    <div id="cam-stage"></div>
+    <div class="chart-toolbar">
+      <button class="rf-tb-btn" onclick="camStep(-1)">◀ vorige</button>
+      <span id="cam-count" style="font-size:11px;color:var(--muted)"></span>
+      <button class="rf-tb-btn" onclick="camStep(1)">volgende ▶</button>
+      <span id="cam-meta" style="font-size:11px;color:var(--muted)"></span>
+      <a id="cam-open" href="#" target="_blank" rel="noopener" style="margin-left:auto;font-size:11px">open ↗</a>
+    </div>
   </div>
 </div>
 
@@ -1320,7 +1340,7 @@ function initElevInteraction() {
 window.addEventListener('resize', () => { const m = document.getElementById('elev-modal'); if (m && m.style.display === 'flex') { if (elevMap) elevMap.invalidateSize(); drawElevProfile(); } });
 
 // ── Webcams langs de route (geverifieerde, gecureerde lijst) ────────────
-let camLayer = null;
+let camLayer = null, camList = [], camIdx = -1;
 async function checkWebcams() {
   // knop alleen tonen als er geverifieerde cams zijn
   try {
@@ -1332,43 +1352,56 @@ async function checkWebcams() {
 }
 async function toggleCams() {
   const btn = document.getElementById('btn-cams');
-  if (camLayer) { camLayer.remove(); camLayer = null; btn.classList.remove('active'); return; }
+  if (camLayer) { camLayer.remove(); camLayer = null; closeCamViewer(); btn.classList.remove('active'); return; }
   btn.classList.add('active');
   try {
     const r = await fetch(`${API}/api/webcams/curated?race=${RC}`);
-    const cams = (await r.json()).webcams || [];
-    if (!cams.length) { btn.classList.remove('active'); return; }
+    camList = ((await r.json()).webcams || []).filter(c => c.lat != null && c.lon != null);
+    if (!camList.length) { btn.classList.remove('active'); return; }
     camLayer = L.layerGroup();
-    for (const c of cams) {
-      if (c.lat == null || c.lon == null) continue;
+    camList.forEach((c, i) => {
       const m = L.marker([c.lat, c.lon], {
         icon: L.divIcon({ className: 'cam-marker', html: '📷', iconSize: [26, 26], iconAnchor: [13, 13] })
       });
-      const loc = [c.city, c.region].filter(Boolean).join(', ');
-      const thumb = c.thumbnail || c.preview;
-      const media = c.hls
-        ? `<video class="cam-pop-v" data-hls="${c.hls}" controls muted playsinline></video>`
-        : c.playerDay && /youtube\.com\/embed/.test(c.playerDay)
-          ? `<iframe class="cam-pop-if" src="${c.playerDay}" allow="autoplay; fullscreen" frameborder="0"></iframe>`
-          : (thumb ? `<img src="${thumb}" alt="">` : '');
-      m.bindPopup(
-        `<div class="cam-pop"><div class="cam-pop-t">${c.title || 'Webcam'}</div>` +
-        (loc ? `<div class="cam-pop-l">${loc}</div>` : '') +
-        media +
-        (c.note ? `<div class="cam-pop-n">${c.note}</div>` : '') +
-        (c.detailUrl && !c.hls ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : '') +
-        `</div>`, { maxWidth: 260 });
-      if (c.hls) m.on('popupopen', ev => {
-        const el = ev.popup.getElement();
-        const v = el && el.querySelector('video.cam-pop-v[data-hls]');
-        if (v && !v.dataset.mounted) { v.dataset.mounted = '1'; mountHls(v, v.dataset.hls); }
-      });
+      m.bindTooltip(c.title || 'Webcam', { direction: 'top' });
+      m.on('click', () => openCamViewer(i));
       m.addTo(camLayer);
-    }
+    });
     camLayer.addTo(map);
   } catch(e) { btn.classList.remove('active'); }
 }
-// HLS (.m3u8) afspelen in cam-popups: Safari native, anders hls.js (lazy)
+
+// ── Camerascherm (modal viewer) ─────────────────────────────────────────
+function openCamViewer(i) {
+  if (i < 0 || i >= camList.length) return;
+  camIdx = i;
+  const c = camList[i];
+  const loc = [c.city, c.region].filter(Boolean).join(', ');
+  const thumb = c.thumbnail || c.preview;
+  const stage = document.getElementById('cam-stage');
+  stage.innerHTML = c.hls
+    ? `<video id="cam-video" controls autoplay muted playsinline></video>`
+    : c.playerDay && /youtube\.com\/embed/.test(c.playerDay)
+      ? `<iframe src="${c.playerDay}?autoplay=1&mute=1" allow="autoplay; fullscreen" frameborder="0"></iframe>`
+      : thumb ? `<img src="${thumb}" alt="">` : `<div class="cam-none">Geen voorvertoning — open de stream ↗</div>`;
+  if (c.hls) mountHls(document.getElementById('cam-video'), c.hls);
+  document.getElementById('cam-title').textContent = c.title || 'Webcam';
+  document.getElementById('cam-meta').textContent =
+    [loc, c.routeKm != null ? `km ${c.routeKm}` : '', c.note].filter(Boolean).join(' · ');
+  const open = document.getElementById('cam-open');
+  open.href = c.detailUrl || c.hls || '#';
+  open.style.display = (c.detailUrl || c.hls) ? '' : 'none';
+  document.getElementById('cam-count').textContent = `${i + 1} / ${camList.length}`;
+  document.getElementById('cam-modal').style.display = 'flex';
+  if (c.lat != null) map.panTo([c.lat, c.lon]);
+}
+function camStep(d) { openCamViewer((camIdx + d + camList.length) % camList.length); }
+function closeCamViewer() {
+  const m = document.getElementById('cam-modal');
+  if (m) m.style.display = 'none';
+  const s = document.getElementById('cam-stage'); if (s) s.innerHTML = '';  // stop streams
+}
+// HLS (.m3u8) afspelen: Safari native, anders hls.js (lazy)
 function mountHls(video, url) {
   if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; return; }
   if (window.Hls && window.Hls.isSupported()) { const h = new Hls(); h.loadSource(url); h.attachMedia(video); return; }
