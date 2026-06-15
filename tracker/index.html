@@ -246,10 +246,28 @@
     }
     .section-collapse:hover { color: var(--text); }
 
+    /* ── Layer switcher ── */
+    #layer-switcher {
+      position: absolute; bottom: 32px; left: 10px; z-index: 900;
+      display: flex; gap: 5px;
+      background: rgba(255,255,255,.96); border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px; box-shadow: 0 2px 8px rgba(28,38,53,.18);
+    }
+    .ls-tile {
+      cursor: pointer; border-radius: 5px; overflow: hidden;
+      border: 2px solid transparent; transition: border-color .15s;
+      width: 62px; text-align: center;
+    }
+    .ls-tile:hover { border-color: var(--muted); }
+    .ls-tile.active { border-color: #2563eb; }
+    .ls-tile img { display: block; width: 62px; height: 46px; object-fit: cover; border-radius: 3px 3px 0 0; }
+    .ls-tile span { display: block; font-size: 10px; font-weight: 600; color: var(--text); padding: 2px 2px 1px; line-height: 1.2; }
+    .ls-tile.active span { color: #2563eb; }
+
     /* ── Overlay legend ── */
     #overlay-legend {
       display: none;
-      position: absolute; bottom: 40px; left: 10px; z-index: 800;
+      position: absolute; bottom: 115px; left: 10px; z-index: 800;
       background: rgba(255,255,255,.95); border: 1px solid var(--border);
       border-radius: 6px; padding: 7px 10px; font-size: 10px;
       pointer-events: none; line-height: 1.6;
@@ -558,6 +576,7 @@
         </div>
         <div id="rrp-list"><div class="rrp-empty">Klik op een punt op de route</div></div>
       </div>
+      <div id="layer-switcher"></div>
       <div id="refresh-bar">↺ —</div>
       <button id="map-fs-close" onclick="toggleFullscreen()" title="Sluiten (Esc)" style="display:none">✕</button>
       <div id="race-clock" style="display:none">
@@ -684,15 +703,77 @@ let routeCum      = [];
 let gradientLayer = null;
 let surfaceLayer  = null;
 
+// ── Kaartlagen ─────────────────────────────────────────────────────────
+// Previews: vaste tegel Helena MT (zoom 10, x=193, y=361)
+const BASE_LAYERS = {
+  otm: {
+    label: 'Topo',
+    thumb: 'https://a.tile.opentopomap.org/10/193/361.png',
+    layers: [
+      { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr: '© <a href="https://opentopomap.org">OpenTopoMap</a>', maxZoom: 17 },
+    ],
+  },
+  sat: {
+    label: 'Satelliet',
+    thumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/10/361/193',
+    layers: [
+      { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri', maxZoom: 18 },
+      { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', attr: '', maxZoom: 18, opacity: 0.85 },
+    ],
+  },
+  relief: {
+    label: 'Reliëf',
+    thumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/10/361/193',
+    layers: [
+      { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}', attr: '© Esri', maxZoom: 13 },
+      { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', attr: '', maxZoom: 13, opacity: 0.9 },
+    ],
+  },
+  natgeo: {
+    label: 'Nat Geo',
+    thumb: 'https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/10/361/193',
+    layers: [
+      { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', attr: '© Esri / National Geographic', maxZoom: 12 },
+    ],
+  },
+};
+let activeBaseId = 'otm';
+let activeTileLayers = [];
+
+function setBaseLayer(id) {
+  activeTileLayers.forEach(l => l.remove());
+  activeTileLayers = [];
+  const def = BASE_LAYERS[id];
+  def.layers.forEach(lc => {
+    const l = L.tileLayer(lc.url, {
+      attribution: lc.attr || '', maxZoom: lc.maxZoom || 19,
+      opacity: lc.opacity ?? 1,
+    }).addTo(map);
+    activeTileLayers.push(l);
+  });
+  // Zorg dat route/markers bovenop blijven
+  activeTileLayers.forEach(l => l.bringToBack());
+  activeBaseId = id;
+  document.querySelectorAll('.ls-tile').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+}
+
+function buildLayerSwitcher() {
+  const sw = document.getElementById('layer-switcher');
+  sw.innerHTML = Object.entries(BASE_LAYERS).map(([id, def]) => `
+    <div class="ls-tile${id === activeBaseId ? ' active' : ''}" data-id="${id}" onclick="setBaseLayer('${id}')" title="${def.label}">
+      <img src="${def.thumb}" alt="${def.label}" loading="lazy">
+      <span>${def.label}</span>
+    </div>`).join('');
+}
+
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
   map = L.map('map', { zoomControl: false }).setView([48, 10], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
-  }).addTo(map);
+  setBaseLayer(activeBaseId);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   // Schaalbalk in km — beweegt automatisch mee met zoomen (afstanden inschatten)
   L.control.scale({ metric: true, imperial: false, maxWidth: 140, position: 'bottomleft' }).addTo(map);
+  buildLayerSwitcher();
   map.on('zoomend', updateLabelVisibility);
   map.on('click', function(e) {
     if (!routeRankingMode || !routePts.length) return;
