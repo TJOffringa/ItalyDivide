@@ -155,9 +155,11 @@
     /* ── Map ── */
     #map { flex: 1; min-width: 0; position: relative; }
     .leaflet-container { background: #e8eef0; }
+    /* Zoomknoppen iets omhoog zodat refresh-bar eronder past */
+    .leaflet-bottom.leaflet-right { bottom: 36px; }
 
     #refresh-bar {
-      position: absolute; bottom: 80px; right: 10px; z-index: 800;
+      position: absolute; bottom: 10px; right: 10px; z-index: 800;
       background: rgba(255,255,255,.9); border: 1px solid var(--border);
       border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
       pointer-events: none;
