@@ -1517,18 +1517,30 @@ async function toggleTrack(id) {
         // Stops: voor de leiders (in trackleaders raceflow) een lagere drempel (20 min) op de
         // schone race-flow-km; voor de rest GPS-history met 45 min.
         const tlSeries = tlflowData?.riders?.[id];
+        const stopMin = (tlSeries && tlflowData.rstarttime) ? 20*60000 : 45*60000;
         let stops;
         if (tlSeries && tlflowData.rstarttime) {
           const tlTrack = tlSeries.map(([h, km]) => { const pt = routePointAtKm(km) || [0,0]; return [pt[0], pt[1], tlflowData.rstarttime + h*3600000, km]; });
-          stops = extractStopsFromTrack(tlTrack, cur, Date.now(), 20*60000);
+          stops = extractStopsFromTrack(tlTrack, cur, Date.now(), stopMin);
         } else {
-          stops = extractStopsFromTrack(pts, cur, Date.now());
+          stops = extractStopsFromTrack(pts, cur, Date.now(), stopMin);
         }
-        // Lopende stop op de werkelijke huidige positie (= het bolletje) zetten; de raceflow-km
-        // kan iets vóór de GPS-positie liggen, waardoor de stop anders verderop zou staan.
+        // De lopende stop op de WERKELIJKE GPS-positie (= het bolletje) zetten. De raceflow-km
+        // kan vóór/achter de GPS-positie liggen; voor leiders staat de huidige rust daardoor soms
+        // een stuk verderop op de route. We nemen daarom de lopende rust uit de GPS-track.
         const tip0 = pts[pts.length - 1];
-        const oiS = stops.findIndex(s => s.ongoing);
-        if (oiS >= 0 && tip0) { stops[oiS].lat = tip0[0]; stops[oiS].lon = tip0[1]; }
+        const gpsOngoing = extractStopsFromTrack(pts, cur, Date.now(), stopMin).find(s => s.ongoing);
+        if (gpsOngoing && tip0) {
+          // raceflow-stops die in (of na) deze rustperiode vallen weglaten — die kunnen door
+          // raceflow-overshoot zuidelijker staan dan waar de rijder echt stilstaat
+          stops = stops.filter(s => (s.startMs + s.durationMs) <= gpsOngoing.startMs);
+          gpsOngoing.lat = tip0[0]; gpsOngoing.lon = tip0[1];
+          stops.push(gpsOngoing);
+        } else {
+          // geen lopende GPS-rust (rijder beweegt of GPS te oud): oude override behouden
+          const oiS = stops.findIndex(s => s.ongoing);
+          if (oiS >= 0 && tip0) { stops[oiS].lat = tip0[0]; stops[oiS].lon = tip0[1]; }
+        }
         const stopMarkers = drawStopMarkers(stops);
         // Lopende stop: elke minuut de duur live bijwerken zolang de track open staat
         let liveTimer = null;
