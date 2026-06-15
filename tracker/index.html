@@ -862,9 +862,23 @@ async function loadRoute() {
   try {
     if (raceConfig?.routeFile) {
       // GeoJSON route via FMC API (e.g. Seven Serpents)
-      const r = await fetch(`${API}/api/fmc/${RC}/route?f=${raceConfig.routeFile}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const geojson = await r.json();
+      let geojson = null;
+      try {
+        const r = await fetch(`${API}/api/fmc/${RC}/route?f=${raceConfig.routeFile}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        geojson = await r.json();
+      } catch(e) {
+        // Vangnet: valt de FMC-route-endpoint uit (timeout/502), gebruik de
+        // statische route.json — identieke route, zodat kaart + ghosts blijven werken.
+        console.warn('FMC route failed, falling back to static route.json:', e.message);
+        const fb = await fetch(`${API}/${SLUG}/route.json`);
+        if (!fb.ok) throw new Error(`route.json fallback HTTP ${fb.status}`);
+        const pts = await fb.json();
+        if (routeLayer) routeLayer.forEach(l => l.remove());
+        routeLayer = [L.polyline(pts, { color: '#b90a0a', weight: 4, opacity: .85 }).addTo(map)];
+        routePts = pts;
+      }
+      if (geojson) {
       if (routeLayer) routeLayer.forEach(l => l.remove());
       routeLayer = [L.geoJSON(geojson, {
         style: { color: '#b90a0a', weight: 4, opacity: .85 },
@@ -877,6 +891,7 @@ async function loadRoute() {
         for (const line of lines) for (const c of line) pts.push([parseFloat(c[1]), parseFloat(c[0])]);
       }
       routePts = pts;  // volledige resolutie: de cumulatieve km moet exact matchen met server-distanceOnTrack (anders snijdt sampling bochten af → km-schaal te kort)
+      }
     } else {
       // Komoot route: load via API server (avoids GitHub Pages path prefix issues)
       const [rr, sr] = await Promise.all([
