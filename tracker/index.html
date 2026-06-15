@@ -753,6 +753,10 @@ function setBaseLayer(id) {
   });
   // Zorg dat route/markers bovenop blijven
   activeTileLayers.forEach(l => l.bringToBack());
+  // Blokkeer inzoomen voorbij het maximum van deze kaartlaag
+  const layerMax = Math.min(...def.layers.map(lc => lc.maxZoom || 19));
+  map.setMaxZoom(layerMax);
+  if (map.getZoom() > layerMax) map.setZoom(layerMax);
   activeBaseId = id;
   document.querySelectorAll('.ls-tile').forEach(el => el.classList.toggle('active', el.dataset.id === id));
 }
