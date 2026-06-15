@@ -106,6 +106,13 @@
     .ctrl-btn:hover { color: var(--text); border-color: var(--muted); }
     .ctrl-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 600; }
     .ctrl-btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+    /* Op mobiel: alleen iconen tonen (labels verborgen, titels blijven) zodat veel knoppen
+       per rij passen en het klassement niet onder de vouw verdwijnt. */
+    @media (max-width: 640px) {
+      #controls { padding: 6px 8px; gap: 5px; }
+      .ctrl-btn { padding: 5px 7px; font-size: 15px; line-height: 1; gap: 0; }
+      .ctrl-btn .bl { display: none; }
+    }
 
     /* ── Route tabs ── */
     #route-tabs { display: none; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 4px; }
@@ -545,21 +552,21 @@
       </div>
 
       <div id="controls">
-        <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()">🔍 Langs route</button>
-        <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()">📊 Race Flow</button>
-        <button class="ctrl-btn" id="btn-analyse" onclick="openAnalyse()" title="Analyse: dagboek per rijder, segment-splits, vergelijking met record, veldoverzicht">🔬 Analyse</button>
-        <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none">🏆 Resultaten</button>
-        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 Routeklassement</button>
-        <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 Afstand tot punt</button>
-        <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader('M')" title="Vlieg naar de leider">🥇 Leider</button>
-        <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀</button>
-        <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 Lau</button>
-        <button class="ctrl-btn" id="btn-cams" onclick="toggleCams()" title="Toon geverifieerde webcams langs de route" style="display:none">📷 Webcams</button>
-        <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 Labels</button>
-        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ Helling</button>
-        <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel" style="display:none">📈 Hoogteprofiel</button>
-        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 Ondergrond</button>
-        <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ Scherm</button>
+        <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()" title="Zoek plaatsen/POI's langs de route">🔍 <span class="bl">Langs route</span></button>
+        <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()" title="Race Flow: km-vs-tijd grafiek">📊 <span class="bl">Race Flow</span></button>
+        <button class="ctrl-btn" id="btn-analyse" onclick="openAnalyse()" title="Analyse: dagboek per rijder, segment-splits, vergelijking met record, veldoverzicht">🔬 <span class="bl">Analyse</span></button>
+        <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none" title="Uitslagen">🏆 <span class="bl">Resultaten</span></button>
+        <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 <span class="bl">Routeklassement</span></button>
+        <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 <span class="bl">Afstand tot punt</span></button>
+        <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader('M')" title="Vlieg naar de leider">🥇 <span class="bl">Leider</span></button>
+        <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀<span class="bl"> Leidster</span></button>
+        <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 <span class="bl">Lau</span></button>
+        <button class="ctrl-btn" id="btn-cams" onclick="toggleCams()" title="Toon geverifieerde webcams langs de route" style="display:none">📷 <span class="bl">Webcams</span></button>
+        <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 <span class="bl">Labels</span></button>
+        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ <span class="bl">Helling</span></button>
+        <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel" style="display:none">📈 <span class="bl">Hoogteprofiel</span></button>
+        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 <span class="bl">Ondergrond</span></button>
+        <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ <span class="bl">Scherm</span></button>
       </div>
 
       <!-- Route tabs (multi-afstand races) -->
