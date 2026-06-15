@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaartopties vergelijking</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee; padding: 16px; }
+  h1 { font-size: 1.1rem; margin-bottom: 4px; font-weight: 600; color: #fff; }
+  p.sub { font-size: .8rem; color: #999; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+  .panel { background: #1e1e1e; border-radius: 8px; overflow: hidden; border: 1px solid #333; }
+  .panel-hdr { padding: 8px 12px; display: flex; align-items: baseline; gap: 8px; }
+  .panel-hdr h2 { font-size: .85rem; font-weight: 600; }
+  .panel-hdr span { font-size: .72rem; color: #888; }
+  .map-wrap { position: relative; height: 280px; }
+  .map-wrap > div { position: absolute; inset: 0; }
+  .leaflet-control-attribution { font-size: 9px !important; }
+  .choose-btn {
+    display: block; width: calc(100% - 16px); margin: 8px; padding: 6px;
+    background: #2563eb; color: #fff; border: none; border-radius: 5px;
+    font-size: .78rem; cursor: pointer; font-weight: 600;
+  }
+  .choose-btn:hover { background: #1d4ed8; }
+  .center-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .center-bar label { font-size: .78rem; color: #aaa; }
+  select, input[type=number] {
+    background: #2a2a2a; color: #eee; border: 1px solid #444; border-radius: 4px;
+    padding: 4px 8px; font-size: .8rem;
+  }
+  .sync-note { font-size: .72rem; color: #666; margin-top: 4px; }
+  .tag-free  { background: #166534; color: #bbf7d0; padding: 1px 5px; border-radius: 3px; font-size:.65rem; }
+  .tag-key   { background: #713f12; color: #fef9c3; padding: 1px 5px; border-radius: 3px; font-size:.65rem; }
+  .tag-vec   { background: #1e3a5f; color: #bfdbfe; padding: 1px 5px; border-radius: 3px; font-size:.65rem; }
+</style>
+</head>
+<body>
+
+<h1>Kaartopties vergelijking</h1>
+<p class="sub">Klik "Kies deze kaart" om de URL voor de tracker te kopiëren. Alle panelen zijn gesynchroniseerd.</p>
+
+<div class="center-bar">
+  <label>Centreer op:</label>
+  <select id="presets" onchange="applyPreset()">
+    <option value="46.596,-112.027,11">Helena, Montana</option>
+    <option value="51.16,-115.56,10">Start — Banff</option>
+    <option value="40.78,-107.08,11">Colorado divergentie (Steamboat)</option>
+    <option value="44.66,-110.93,11">Yellowstone</option>
+    <option value="31.33,-108.53,11">Finish — Antelope Wells</option>
+  </select>
+  <label>Zoom:</label>
+  <input type="number" id="zoom-in" min="3" max="18" value="11" style="width:55px" onchange="setZoom(+this.value)">
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script>
+const STYLES = [
+  {
+    id: 'osm',
+    name: 'OpenStreetMap',
+    note: 'Standaard OSM — huidige kaart',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr: '© OpenStreetMap contributors',
+    maxZoom: 19,
+  },
+  {
+    id: 'carto-voyager',
+    name: 'CartoDB Voyager',
+    note: 'Kleurig, helder, goede leesbaarheid',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attr: '© CartoDB',
+    maxZoom: 19,
+  },
+  {
+    id: 'carto-light',
+    name: 'CartoDB Positron',
+    note: 'Licht, minimalistisch',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attr: '© CartoDB',
+    maxZoom: 19,
+  },
+  {
+    id: 'carto-dark',
+    name: 'CartoDB Dark Matter',
+    note: 'Donker thema',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attr: '© CartoDB',
+    maxZoom: 19,
+  },
+  {
+    id: 'otm',
+    name: 'OpenTopoMap',
+    note: 'Topografisch met hoogtelijnen',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attr: '© OpenTopoMap',
+    maxZoom: 17,
+  },
+  {
+    id: 'esri-topo',
+    name: 'Esri World Topo',
+    note: 'Topografisch + wegen, scherp',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attr: '© Esri',
+    maxZoom: 18,
+  },
+  {
+    id: 'esri-sat',
+    name: 'Esri Satelliet',
+    note: 'Satellietbeelden',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attr: '© Esri',
+    maxZoom: 18,
+  },
+  {
+    id: 'esri-hybrid',
+    name: 'Esri Satelliet + labels',
+    note: 'Satelliet met wegen overlay',
+    tag: 'free',
+    type: 'leaflet-hybrid',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    urlLabels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    attr: '© Esri',
+    maxZoom: 18,
+  },
+  {
+    id: 'ofm-liberty',
+    name: 'OpenFreeMap — Liberty',
+    note: 'Vector, zoals vaphana.com gebruikt',
+    tag: 'vector',
+    type: 'maplibre',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+  },
+  {
+    id: 'ofm-bright',
+    name: 'OpenFreeMap — Bright',
+    note: 'Vector, helderder/eenvoudiger',
+    tag: 'vector',
+    type: 'maplibre',
+    style: 'https://tiles.openfreemap.org/styles/bright',
+  },
+  {
+    id: 'ofm-positron',
+    name: 'OpenFreeMap — Positron',
+    note: 'Vector, licht minimalistisch',
+    tag: 'vector',
+    type: 'maplibre',
+    style: 'https://tiles.openfreemap.org/styles/positron',
+  },
+  {
+    id: 'stadia-smooth',
+    name: 'Stadia Alidade Smooth',
+    note: 'Zacht pastelkleurig, rustig',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
+    attr: '© Stadia Maps',
+    maxZoom: 20,
+  },
+  {
+    id: 'stadia-dark',
+    name: 'Stadia Alidade Dark',
+    note: 'Donker pastelthema',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+    attr: '© Stadia Maps',
+    maxZoom: 20,
+  },
+  {
+    id: 'stadia-terrain',
+    name: 'Stadia Terrain',
+    note: 'Terrein + hoogtelijnen',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png',
+    attr: '© Stadia / Stamen',
+    maxZoom: 18,
+  },
+  {
+    id: 'stadia-toner',
+    name: 'Stadia Toner',
+    note: 'Zwart-wit, sterk contrast',
+    tag: 'free',
+    type: 'leaflet',
+    url: 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}{r}.png',
+    attr: '© Stadia / Stamen',
+    maxZoom: 20,
+  },
+];
+
+let center = [46.596, -112.027];
+let zoom = 11;
+const maps = {};  // id → {type, map/mlMap}
+
+function tagHtml(tag) {
+  if (tag === 'vector') return '<span class="tag-vec">vector</span>';
+  if (tag === 'key') return '<span class="tag-key">API key nodig</span>';
+  return '<span class="tag-free">gratis</span>';
+}
+
+function buildPanels() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (const s of STYLES) {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.innerHTML = `
+      <div class="panel-hdr">
+        <h2>${s.name}</h2>${tagHtml(s.tag)}<span>${s.note}</span>
+      </div>
+      <div class="map-wrap"><div id="map-${s.id}"></div></div>
+      <button class="choose-btn" onclick="copyChoice('${s.id}')">📋 Kies deze kaart</button>
+    `;
+    grid.appendChild(panel);
+    initMap(s);
+  }
+}
+
+function initMap(s) {
+  const el = document.getElementById('map-' + s.id);
+  if (s.type === 'maplibre') {
+    const ml = new maplibregl.Map({
+      container: el,
+      style: s.style,
+      center: [center[1], center[0]],
+      zoom: zoom,
+      attributionControl: false,
+    });
+    ml.addControl(new maplibregl.AttributionControl({ compact: true }));
+    maps[s.id] = { type: 'maplibre', ml };
+    ml.on('moveend', () => onMapMove(s.id, 'maplibre', ml));
+  } else if (s.type === 'leaflet') {
+    const lm = L.map(el, { zoomControl: false, attributionControl: true }).setView(center, zoom);
+    L.tileLayer(s.url, { attribution: s.attr, maxZoom: s.maxZoom || 18 }).addTo(lm);
+    maps[s.id] = { type: 'leaflet', lm };
+    lm.on('moveend', () => onMapMove(s.id, 'leaflet', lm));
+  } else if (s.type === 'leaflet-hybrid') {
+    const lm = L.map(el, { zoomControl: false, attributionControl: true }).setView(center, zoom);
+    L.tileLayer(s.url, { attribution: s.attr, maxZoom: s.maxZoom || 18 }).addTo(lm);
+    L.tileLayer(s.urlLabels, { maxZoom: s.maxZoom || 18, opacity: 0.8 }).addTo(lm);
+    maps[s.id] = { type: 'leaflet', lm };
+    lm.on('moveend', () => onMapMove(s.id, 'leaflet', lm));
+  }
+}
+
+let syncing = false;
+function onMapMove(sourceId, type, mapObj) {
+  if (syncing) return;
+  syncing = true;
+  let c, z;
+  if (type === 'maplibre') {
+    const ll = mapObj.getCenter();
+    c = [ll.lat, ll.lng]; z = Math.round(mapObj.getZoom());
+  } else {
+    const ll = mapObj.getCenter();
+    c = [ll.lat, ll.lng]; z = mapObj.getZoom();
+  }
+  center = c; zoom = z;
+  document.getElementById('zoom-in').value = Math.round(z);
+  syncAll(sourceId);
+  syncing = false;
+}
+
+function syncAll(exceptId) {
+  for (const [id, m] of Object.entries(maps)) {
+    if (id === exceptId) continue;
+    if (m.type === 'maplibre') {
+      m.ml.setCenter([center[1], center[0]]);
+      m.ml.setZoom(zoom);
+    } else {
+      m.lm.setView(center, zoom, { animate: false });
+    }
+  }
+}
+
+function setZoom(z) {
+  zoom = z;
+  syncAll(null);
+}
+
+function applyPreset() {
+  const v = document.getElementById('presets').value.split(',');
+  center = [+v[0], +v[1]]; zoom = +v[2];
+  document.getElementById('zoom-in').value = zoom;
+  syncAll(null);
+}
+
+function copyChoice(id) {
+  const s = STYLES.find(x => x.id === id);
+  let text;
+  if (s.type === 'maplibre') {
+    text = `MapLibre GL JS — style: '${s.style}'\n\nDit vereist vervanging van Leaflet door MapLibre GL JS in index.html.`;
+    alert(text);
+    return;
+  }
+  text = `L.tileLayer('${s.url}', {\n  attribution: '${s.attr}',\n  maxZoom: ${s.maxZoom || 18}\n}).addTo(map);`;
+  navigator.clipboard.writeText(text).then(() => {
+    alert(`Gekopieerd naar klembord:\n\n${text}`);
+  }).catch(() => {
+    prompt('Kopieer dit naar index.html:', text);
+  });
+}
+
+buildPanels();
+</script>
+</body>
+</html>
