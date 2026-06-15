@@ -182,9 +182,11 @@ function renderReview() {
     <div class="rv-title">${esc(c.title)}</div>
     <div class="rv-meta">${esc(loc)}<br>km ${c.routeKm} langs route · ${c.distKm} km van de route${c.status && c.status!=='active' ? ` · <b style="color:var(--red)">${esc(c.status)}</b>` : ''}
       ${c.source==='manual' ? ` · <a class="del" href="#" onclick="return delManual('${c.id}')">verwijder</a>` : ''}</div>
-    <img class="thumb" src="${c.preview || c.thumbnail || ''}" alt="" onerror="this.style.opacity=.3" title="${c.playerDay ? 'klik = live embed' : 'klik = open live ↗'}" onclick="${c.playerDay ? `embedHere(this)` : `window.open('${c.detailUrl}','_blank')`}">
+    ${c.hls
+      ? `<video id="rv-video" class="thumb" controls autoplay muted playsinline></video>`
+      : `<img class="thumb" src="${c.preview || c.thumbnail || ''}" alt="" onerror="this.style.opacity=.3" title="${c.playerDay ? 'klik = live embed' : 'klik = open live ↗'}" onclick="${c.playerDay ? `embedHere(this)` : `window.open('${c.detailUrl}','_blank')`}">`}
     <div class="rv-links">
-      ${c.detailUrl ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : ''}
+      ${c.detailUrl && !c.hls ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : ''}
     </div>
     <input class="note" placeholder="notitie (bijv. 'toont trail bij brug')" value="${esc(notes[c.id]||'')}" oninput="notes[${jid(c.id)}]=this.value">
     <div class="rv-actions">
@@ -197,12 +199,22 @@ function renderReview() {
       <button onclick="nextTodo()">volgende onbeoordeeld ⏭</button>
       <button onclick="openReview(curIdx+1)" ${curIdx===cams.length-1?'disabled':''}>volgende ▶</button>
     </div>`;
+  if (c.hls) { const v = document.getElementById('rv-video'); if (v) mountHls(v, c.hls); }
 }
 
 function embedHere(img) {
   const c = cams[curIdx]; if (!c || !c.playerDay) return;
   const f = document.createElement('iframe'); f.src = c.playerDay; f.allow = 'autoplay; fullscreen';
   img.replaceWith(f);
+}
+// HLS (.m3u8) afspelen: Safari native, anders hls.js (lazy van CDN)
+function mountHls(video, url) {
+  if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; return; }
+  if (window.Hls && window.Hls.isSupported()) { const h = new Hls(); h.loadSource(url); h.attachMedia(video); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1';
+  s.onload = () => mountHls(video, url);
+  document.head.appendChild(s);
 }
 function jid(id){ return typeof id === 'number' ? id : JSON.stringify(id); }
 
@@ -274,7 +286,7 @@ async function save() {
   const payload = [...selected].map(id => {
     const c = allCams.find(x => x.id === id) || { id };
     return { id, source:c.source, title:c.title, lat:c.lat, lon:c.lon, city:c.city, region:c.region, country:c.country,
-      thumbnail:c.thumbnail, detailUrl:c.detailUrl, playerDay:c.playerDay, note:notes[id]||'' };
+      thumbnail:c.thumbnail, detailUrl:c.detailUrl, playerDay:c.playerDay, hls:c.hls, note:notes[id]||'' };
   });
   setStatus('opslaan…');
   try {

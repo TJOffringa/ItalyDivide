@@ -173,7 +173,8 @@
     .cam-marker { font-size: 18px; line-height: 26px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.4); background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
     .cam-pop .cam-pop-t { font-weight: 700; font-size: 13px; }
     .cam-pop .cam-pop-l { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-    .cam-pop img { width: 100%; border-radius: 6px; margin: 4px 0; display: block; }
+    .cam-pop img, .cam-pop-v, .cam-pop-if { width: 100%; border-radius: 6px; margin: 4px 0; display: block; }
+    .cam-pop-v, .cam-pop-if { aspect-ratio: 16/9; border: 0; background: #000; }
     .cam-pop .cam-pop-n { font-size: 11px; font-style: italic; color: var(--muted); margin-bottom: 4px; }
     .leaflet-control-scale-line {
       background: rgba(255,255,255,.85); border: 1px solid var(--navy); border-top: none;
@@ -1345,17 +1346,36 @@ async function toggleCams() {
       });
       const loc = [c.city, c.region].filter(Boolean).join(', ');
       const thumb = c.thumbnail || c.preview;
+      const media = c.hls
+        ? `<video class="cam-pop-v" data-hls="${c.hls}" controls muted playsinline></video>`
+        : c.playerDay && /youtube\.com\/embed/.test(c.playerDay)
+          ? `<iframe class="cam-pop-if" src="${c.playerDay}" allow="autoplay; fullscreen" frameborder="0"></iframe>`
+          : (thumb ? `<img src="${thumb}" alt="">` : '');
       m.bindPopup(
         `<div class="cam-pop"><div class="cam-pop-t">${c.title || 'Webcam'}</div>` +
         (loc ? `<div class="cam-pop-l">${loc}</div>` : '') +
-        (thumb ? `<img src="${thumb}" alt="">` : '') +
+        media +
         (c.note ? `<div class="cam-pop-n">${c.note}</div>` : '') +
-        (c.detailUrl ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : '') +
-        `</div>`, { maxWidth: 240 });
+        (c.detailUrl && !c.hls ? `<a href="${c.detailUrl}" target="_blank" rel="noopener">▶ live bekijken ↗</a>` : '') +
+        `</div>`, { maxWidth: 260 });
+      if (c.hls) m.on('popupopen', ev => {
+        const el = ev.popup.getElement();
+        const v = el && el.querySelector('video.cam-pop-v[data-hls]');
+        if (v && !v.dataset.mounted) { v.dataset.mounted = '1'; mountHls(v, v.dataset.hls); }
+      });
       m.addTo(camLayer);
     }
     camLayer.addTo(map);
   } catch(e) { btn.classList.remove('active'); }
+}
+// HLS (.m3u8) afspelen in cam-popups: Safari native, anders hls.js (lazy)
+function mountHls(video, url) {
+  if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; return; }
+  if (window.Hls && window.Hls.isSupported()) { const h = new Hls(); h.loadSource(url); h.attachMedia(video); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1';
+  s.onload = () => mountHls(video, url);
+  document.head.appendChild(s);
 }
 
 // ── Rider Tracks ───────────────────────────────────────────────────────
