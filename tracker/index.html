@@ -774,7 +774,7 @@ function setBaseLayer(id) {
     }).addTo(map);
     activeTileLayers.push(l);
   });
-  activeTileLayers.forEach(l => l.bringToBack());
+  activeTileLayers[0]?.bringToBack(); // only push base to back; overlay layers stay on top of it
   const layerMax = Math.min(...def.layers.map(lc => lc.maxZoom || 19));
   map.setMaxZoom(layerMax);
   if (map.getZoom() > layerMax) map.setZoom(layerMax);
