@@ -448,6 +448,7 @@
     #raceflow-close:hover, .chart-close:hover { color: var(--text); }
     #raceflow-canvas, #elev-canvas { flex: 1; display: block; min-height: 0; width: 100%; cursor: grab; touch-action: none; }
     #raceflow-canvas.dragging, #elev-canvas.dragging { cursor: grabbing; }
+    #elev-canvas.selecting { cursor: crosshair; }
     #ep-readout { margin-left: auto; font-size: 11px; color: var(--text); font-weight: 600; }
     #ep-status { padding: 8px 16px; font-size: 12px; color: var(--muted); text-align: center; }
     #raceflow-toolbar, .chart-toolbar {
@@ -680,6 +681,8 @@
       <button class="rf-tb-btn" onclick="epZoom(1.43)">－</button>
       <div class="rf-tb-sep"></div>
       <button class="rf-tb-btn active" id="ep-riders-btn" onclick="toggleElevRiders()" title="Toon de top 15 op kaart én profiel">👥 Top 15</button>
+      <div class="rf-tb-sep"></div>
+      <button class="rf-tb-btn" id="ep-sel-btn" onclick="toggleEpSelect()" title="Sleep een gebied op het profiel om het over de volle breedte uit te vergroten (of houd Shift ingedrukt en sleep)">🔍 Selecteer</button>
       <span class="chart-hint">scroll = zoom · sleep = pan</span>
       <span id="ep-readout"></span>
     </div>
@@ -1165,6 +1168,8 @@ let elevProfile = null;       // {dist:[km], ele:[m], total, minE, maxE}
 let epView = [0, 0];          // zichtbaar [km0, km1]
 let epHoverPx = null;         // muis-x (canvas-coord) voor crosshair; null = uit
 let epInited = false;
+let epSelMode = false;        // selectie-modus: sleep een gebied om uit te vergroten
+let epSel = null;             // actieve selectie {startKm, curKm} tijdens het slepen
 const EP_PADL = 48, EP_PADR = 14;
 // split-screen: tweede kaart, scrubber + rijders
 let elevMap = null, elevRouteLayer = null, elevScrubMarker = null, elevRiderLayer = null;
@@ -1420,6 +1425,20 @@ function drawElevProfile() {
     ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
   }
 
+  // actieve zoom-selectie (sleep een gebied om uit te vergroten)
+  if (epSel) {
+    const clampX = px => Math.max(EP_PADL, Math.min(W - EP_PADR, px));
+    const xa = clampX(xToPx(epSel.startKm)), xb = clampX(xToPx(epSel.curKm));
+    const xL = Math.min(xa, xb), xR = Math.max(xa, xb);
+    ctx.fillStyle = 'rgba(37,99,235,.15)';
+    ctx.fillRect(xL, padT, xR - xL, plotH);
+    ctx.strokeStyle = 'rgba(37,99,235,.8)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(xL, padT); ctx.lineTo(xL, padT + plotH); ctx.moveTo(xR, padT); ctx.lineTo(xR, padT + plotH); ctx.stroke();
+    const lo = Math.min(epSel.startKm, epSel.curKm), hi = Math.max(epSel.startKm, epSel.curKm);
+    ctx.fillStyle = '#2563eb'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(`${Math.round(lo)}–${Math.round(hi)} km`, (xL + xR) / 2, padT + 2);
+  }
+
   // crosshair + uitlezing
   const ro = document.getElementById('ep-readout');
   if (epHoverPx != null && epHoverPx >= EP_PADL && epHoverPx <= W - EP_PADR) {
@@ -1457,6 +1476,14 @@ function epScreenToKm(clientX) {
 }
 function epZoom(factor) { epZoomAt(factor, (epView[0] + epView[1]) / 2); }
 function epResetZoom() { if (elevProfile) { epView = [0, elevProfile.total]; document.getElementById('epz-all').classList.add('active'); drawElevProfile(); } }
+function toggleEpSelect() {
+  epSelMode = !epSelMode;
+  document.getElementById('ep-sel-btn').classList.toggle('active', epSelMode);
+  const cv = document.getElementById('elev-canvas');
+  if (cv) cv.style.cursor = epSelMode ? 'crosshair' : '';
+  document.querySelector('#elev-modal .chart-hint').textContent = epSelMode ? 'sleep een gebied om in te zoomen' : 'scroll = zoom · sleep = pan';
+  if (!epSelMode) { epSel = null; drawElevProfile(); }
+}
 
 function initElevInteraction() {
   if (epInited) return;
@@ -1476,14 +1503,36 @@ function initElevInteraction() {
     document.getElementById('epz-all').classList.toggle('active', epView[0] <= 0.01 && epView[1] >= total - 0.01);
     drawElevProfile();
   };
+  // rond een sleep-selectie af: zoom het profiel naar het gekozen km-bereik
+  const finishSel = () => {
+    cv.classList.remove('selecting');
+    if (!epSel || !elevProfile) { epSel = null; return; }
+    const lo = Math.min(epSel.startKm, epSel.curKm), hi = Math.max(epSel.startKm, epSel.curKm);
+    epSel = null;
+    if (hi - lo >= 0.3) { // negeer een mini-selectie / losse klik
+      epView = [Math.max(0, lo), Math.min(elevProfile.total, hi)];
+      document.getElementById('epz-all').classList.toggle('active', epView[0] <= 0.01 && epView[1] >= elevProfile.total - 0.01);
+    }
+    drawElevProfile();
+  };
   cv.onwheel = e => { e.preventDefault(); epZoomAt(e.deltaY > 0 ? 1.25 : 0.8, epScreenToKm(e.clientX)); };
-  cv.onmousedown = e => { dragX = e.clientX; dragView = [...epView]; cv.classList.add('dragging'); };
-  cv.onmousemove = e => { epHoverPx = e.clientX - cv.getBoundingClientRect().left; if (dragX != null) panTo(e.clientX); else drawElevProfile(); };
-  cv.onmouseleave = () => { epHoverPx = null; dragX = null; cv.classList.remove('dragging'); drawElevProfile(); };
-  window.addEventListener('mouseup', () => { dragX = null; cv.classList.remove('dragging'); });
+  cv.onmousedown = e => {
+    if (epSelMode || e.shiftKey) { const km = epScreenToKm(e.clientX); epSel = { startKm: km, curKm: km }; cv.classList.add('selecting'); epHoverPx = null; drawElevProfile(); return; }
+    dragX = e.clientX; dragView = [...epView]; cv.classList.add('dragging');
+  };
+  cv.onmousemove = e => {
+    if (epSel) { epSel.curKm = epScreenToKm(e.clientX); epHoverPx = null; drawElevProfile(); return; }
+    epHoverPx = e.clientX - cv.getBoundingClientRect().left;
+    if (dragX != null) panTo(e.clientX); else drawElevProfile();
+  };
+  cv.onmouseleave = () => { epHoverPx = null; if (!epSel) { dragX = null; cv.classList.remove('dragging'); drawElevProfile(); } };
+  window.addEventListener('mouseup', () => { if (epSel) { finishSel(); return; } dragX = null; cv.classList.remove('dragging'); });
   cv.ontouchstart = e => {
-    if (e.touches.length === 1) { dragX = e.touches[0].clientX; dragView = [...epView]; pinch = null; }
-    else if (e.touches.length >= 2) { const [a, b] = e.touches; pinch = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); dragX = null; }
+    if (e.touches.length === 1) {
+      if (epSelMode) { const km = epScreenToKm(e.touches[0].clientX); epSel = { startKm: km, curKm: km }; }
+      else { dragX = e.touches[0].clientX; dragView = [...epView]; }
+      pinch = null;
+    } else if (e.touches.length >= 2) { const [a, b] = e.touches; pinch = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); dragX = null; epSel = null; }
   };
   cv.ontouchmove = e => {
     e.preventDefault();
@@ -1492,10 +1541,13 @@ function initElevInteraction() {
       const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
       const center = (a.clientX + b.clientX) / 2;
       if (d > 0) { epZoomAt(pinch / d, epScreenToKm(center)); pinch = d; }
-    } else if (e.touches.length === 1 && dragX != null) { panTo(e.touches[0].clientX); }
+    } else if (e.touches.length === 1) {
+      if (epSel) { epSel.curKm = epScreenToKm(e.touches[0].clientX); drawElevProfile(); }
+      else if (dragX != null) panTo(e.touches[0].clientX);
+    }
   };
   cv.ontouchend = e => {
-    if (e.touches.length === 0) { dragX = null; pinch = null; }
+    if (e.touches.length === 0) { if (epSel) finishSel(); dragX = null; pinch = null; }
     else if (e.touches.length === 1) { dragX = e.touches[0].clientX; dragView = [...epView]; pinch = null; }
   };
 }
