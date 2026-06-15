@@ -106,11 +106,16 @@
     .ctrl-btn:hover { color: var(--text); border-color: var(--muted); }
     .ctrl-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 600; }
     .ctrl-btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
-    /* Op mobiel: labels behouden maar kleiner + compacter, zodat er meer knoppen per rij
-       passen en het klassement niet onder de vouw verdwijnt. */
+    /* Op mobiel: labels behouden maar compacter, en knoppen rekken uit om elke rij
+       volledig te vullen (geen ragged ruimte) zodat er meer per rij passen en het
+       klassement niet onder de vouw verdwijnt. */
     @media (max-width: 640px) {
       #controls { padding: 6px 8px; gap: 4px; }
-      .ctrl-btn { padding: 3px 6px; font-size: 9.5px; gap: 3px; border-radius: 5px; }
+      .ctrl-btn {
+        flex: 1 1 auto; justify-content: center; min-width: 0;
+        padding: 3px 5px; font-size: 9px; gap: 3px; border-radius: 5px;
+      }
+      .ctrl-btn .bl { overflow: hidden; text-overflow: ellipsis; }
     }
 
     /* ── Route tabs ── */
