@@ -106,6 +106,7 @@
     .ctrl-btn:hover { color: var(--text); border-color: var(--muted); }
     .ctrl-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 600; }
     .ctrl-btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+    .ctrl-btn.ctrl-icon { flex: 0 0 auto; }   /* compacte icoon-knop (bv. ♀ naast Leider), rekt niet uit */
     /* Op mobiel: labels behouden maar compacter, en knoppen rekken uit om elke rij
        volledig te vullen (geen ragged ruimte) zodat er meer per rij passen en het
        klassement niet onder de vouw verdwijnt. */
@@ -563,14 +564,14 @@
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 <span class="bl">Routeklassement</span></button>
         <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 <span class="bl">Afstand tot punt</span></button>
         <button class="ctrl-btn" id="btn-leader" onclick="flyToLeader('M')" title="Vlieg naar de leider">🥇 <span class="bl">Leider</span></button>
-        <button class="ctrl-btn" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀<span class="bl"> Leidster</span></button>
+        <button class="ctrl-btn ctrl-icon" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀</button>
+        <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ <span class="bl">Scherm</span></button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 <span class="bl">Lau</span></button>
         <button class="ctrl-btn" id="btn-cams" onclick="toggleCams()" title="Toon geverifieerde webcams langs de route" style="display:none">📷 <span class="bl">Webcams</span></button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 <span class="bl">Labels</span></button>
         <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ <span class="bl">Helling</span></button>
         <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel" style="display:none">📈 <span class="bl">Hoogteprofiel</span></button>
         <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 <span class="bl">Ondergrond</span></button>
-        <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ <span class="bl">Scherm</span></button>
       </div>
 
       <!-- Route tabs (multi-afstand races) -->
