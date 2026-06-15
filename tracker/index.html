@@ -1450,6 +1450,8 @@ function drawElevProfile() {
     ctx.fillStyle = '#1c2635'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
     if (ro) ro.textContent = `${Math.round(dist[i])} km · ${Math.round(ele[i])} m`;
   } else if (ro) { ro.textContent = ''; }
+
+  updateEpStatus();
 }
 
 // zoom (afstand-as) rond een km-anker; schaal/labels wijzigen mee
@@ -1483,6 +1485,31 @@ function toggleEpSelect() {
   if (cv) cv.style.cursor = epSelMode ? 'crosshair' : '';
   document.querySelector('#elev-modal .chart-hint').textContent = epSelMode ? 'sleep een gebied om in te zoomen' : 'scroll = zoom · sleep = pan';
   if (!epSelMode) { epSel = null; drawElevProfile(); }
+}
+
+// Afstand + cumulatieve stijging/daling over een km-bereik (op de gesmoothde profielcurve)
+function epRangeStats(lo, hi) {
+  const { dist, ele } = elevProfile;
+  if (hi < lo) { const t = lo; lo = hi; hi = t; }
+  const idxAtKm = km => { let a = 0, b = dist.length - 1; while (a < b) { const m = (a+b)>>1; if (dist[m] < km) a = m+1; else b = m; } return a; };
+  const i0 = Math.max(0, idxAtKm(lo)), i1 = Math.min(dist.length - 1, idxAtKm(hi));
+  let gain = 0, loss = 0;
+  for (let i = i0 + 1; i <= i1; i++) { const d = ele[i] - ele[i-1]; if (d > 0) gain += d; else loss -= d; }
+  return { km: Math.max(0, hi - lo), gain, loss, eLo: eleAtKm(lo), eHi: eleAtKm(hi) };
+}
+
+// Statusbalk onder de grafiek: tijdens slepen de selectie, anders het zichtbare bereik
+function updateEpStatus() {
+  const el = document.getElementById('ep-status');
+  if (!el || !elevProfile) return;
+  let lo, hi, label;
+  if (epSel) { lo = Math.min(epSel.startKm, epSel.curKm); hi = Math.max(epSel.startKm, epSel.curKm); label = 'Selectie'; }
+  else { [lo, hi] = epView; label = (lo <= 0.01 && hi >= elevProfile.total - 0.01) ? 'Hele route' : 'Zichtbaar'; }
+  const s = epRangeStats(lo, hi);
+  el.innerHTML = `<strong>${label}:</strong> ${s.km.toFixed(1)} km`
+    + ` · <span style="color:#16a34a;font-weight:600">↑ ${Math.round(s.gain).toLocaleString('nl-NL')} m</span>`
+    + ` · <span style="color:#dc2626;font-weight:600">↓ ${Math.round(s.loss).toLocaleString('nl-NL')} m</span>`
+    + ` · <span style="color:var(--muted)">${Math.round(s.eLo)}→${Math.round(s.eHi)} m</span>`;
 }
 
 function initElevInteraction() {
