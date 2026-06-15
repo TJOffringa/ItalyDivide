@@ -1656,6 +1656,7 @@ function initElevInteraction() {
   };
 }
 window.addEventListener('resize', () => { const m = document.getElementById('elev-modal'); if (m && m.style.display === 'flex') { if (elevMap) elevMap.invalidateSize(); drawElevProfile(); } });
+window.addEventListener('resize', () => { const m = document.getElementById('ana-modal'); if (m && m.style.display === 'flex' && anaSection === 'dagboek') drawDagboekTimeline(anaRiderId); });
 
 // ── Webcams langs de route (geverifieerde, gecureerde lijst) ────────────
 let camLayer = null, camList = [], camIdx = -1;
@@ -2977,6 +2978,13 @@ let anaRiderId = null;            // gekozen rijder (deviceId als string)
 let anaGhostIdx = 0;
 let anaSplitA = 0, anaSplitB = 0;
 let anaGainCum = null, anaLossCum = null, anaGainDist = null;
+const ANA_DGB_WINDOWS = [
+  { label: '1 uur', ms: 3600000 }, { label: '3 uur', ms: 3*3600000 }, { label: '6 uur', ms: 6*3600000 },
+  { label: '12 uur', ms: 12*3600000 }, { label: '1 dag', ms: 86400000 }, { label: '2 dagen', ms: 2*86400000 },
+  { label: '3 dagen', ms: 3*86400000 }, { label: '5 dagen', ms: 5*86400000 }, { label: '10 dagen', ms: 10*86400000 },
+  { label: 'Hele race', ms: Infinity },
+];
+let anaDgbWin = 2*86400000;
 
 function anaRidersAll() {
   const list = (allRiders && allRiders.length) ? allRiders : riders;
@@ -3050,6 +3058,10 @@ function anaRiderPicker(lbl) {
   const opts = anaActiveSorted().map(r => `<option value="${r.deviceId}"${String(r.deviceId) === String(anaRiderId) ? ' selected' : ''}>${r.name}</option>`).join('');
   return `<label>${lbl}</label><select onchange="anaRiderId=this.value;anaRender()">${opts}</select>`;
 }
+function anaDgbWindowPicker() {
+  const opts = ANA_DGB_WINDOWS.map(w => `<option value="${w.ms}"${w.ms === anaDgbWin ? ' selected' : ''}>${w.label}</option>`).join('');
+  return `<label>Periode:</label><select onchange="anaDgbWin=(this.value==='Infinity'?Infinity:+this.value);anaRender()">${opts}</select>`;
+}
 function anaGhostPicker() {
   if (!ghostData || !ghostData.length) return '';
   const opts = ghostData.map((g, i) => `<option value="${i}"${i === anaGhostIdx ? ' selected' : ''}>${g.label} — ${g.name}</option>`).join('');
@@ -3065,7 +3077,7 @@ function anaSplitControls() {
 function anaRender() {
   const ctr = document.getElementById('ana-controls'), body = document.getElementById('ana-body');
   if (!ctr || !body) return;
-  if (anaSection === 'dagboek')      { ctr.innerHTML = anaRiderPicker('Rijder:'); body.innerHTML = renderDagboek(anaRiderId); }
+  if (anaSection === 'dagboek')      { ctr.innerHTML = anaRiderPicker('Rijder:') + anaDgbWindowPicker(); body.innerHTML = renderDagboek(anaRiderId); requestAnimationFrame(() => drawDagboekTimeline(anaRiderId)); }
   else if (anaSection === 'splits')  { ctr.innerHTML = anaSplitControls();         body.innerHTML = renderSplits(anaSplitA, anaSplitB); }
   else if (anaSection === 'ghost')   { ctr.innerHTML = anaRiderPicker('Rijder:') + anaGhostPicker(); body.innerHTML = renderGhost(anaRiderId, anaGhostIdx); }
   else if (anaSection === 'veld')    { ctr.innerHTML = ''; body.innerHTML = renderVeld(); }
@@ -3092,11 +3104,109 @@ function renderDagboek(id) {
     return `<tr><td class="l">${localDayLabel(key)}</td><td>${d.km.toFixed(1)}</td><td>${anaDur(d.mov)}</td><td>${anaDur(d.rest)}</td><td>${avg.toFixed(1)}</td><td>${Math.round(gl.gain).toLocaleString('nl-NL')}</td><td class="l" style="color:var(--muted)">${localClock(d.st)}→${localClock(d.et)}</td></tr>`;
   }).join('');
   const tavg = tmov > 0 ? tk / (tmov/3600000) : 0;
-  return `<div class="ana-h2">${anaRiderName(id)} — dagboek <span class="ana-sub" style="display:inline">· tijden in ${raceConfig?.localTzLabel || 'lokale tijd'}</span></div>
+  const winLbl = (ANA_DGB_WINDOWS.find(w => w.ms === anaDgbWin) || {}).label || '';
+  return `<div class="ana-h2">${anaRiderName(id)} — activiteit <span class="ana-sub" style="display:inline">· ${anaDgbWin === Infinity ? 'hele race' : 'laatste ' + winLbl}</span></div>
+    <canvas id="dgb-timeline" height="130" style="width:100%;height:130px;display:block"></canvas>
+    <div class="ana-sub" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">
+      <span><span class="ana-dot" style="background:#14b8a6"></span>bewegend</span>
+      <span><span class="ana-dot" style="background:#f59e0b"></span>stop ≥ 20 min (rust/slaap)</span>
+      <span><span class="ana-dot" style="background:#cbd5e1"></span>korte stop</span>
+      <span style="color:var(--muted)">— lijn = afgelegde km</span>
+    </div>
+    <div class="ana-h2">Dagboek <span class="ana-sub" style="display:inline">· tijden in ${raceConfig?.localTzLabel || 'lokale tijd'}</span></div>
     <table class="ana-table"><thead><tr><th class="l">Dag</th><th>Afstand (km)</th><th>Bewegend</th><th>Rust</th><th>Gem. (km/u)</th><th>Klim (m)</th><th class="l">Rijvenster</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td class="l">Totaal</td><td>${tk.toFixed(0)}</td><td>${anaDur(tmov)}</td><td>${anaDur(trest)}</td><td>${tavg.toFixed(1)}</td><td>${Math.round(tgain).toLocaleString('nl-NL')}</td><td></td></tr></tfoot></table>
     <div class="ana-sub">Rust = tijd met snelheid &lt; ${REST} km/u (slaap + pauzes). Gem. = snelheid tijdens bewegen. Klim = hoogtemeters op het die dag afgelegde stuk.</div>`;
+}
+
+// Activiteiten-timeline: bewegend vs stops over een instelbaar venster, met km-lijn
+function drawDagboekTimeline(id) {
+  const cv = document.getElementById('dgb-timeline');
+  if (!cv) return;
+  const s = riderHistoryCache?.[String(id)];
+  if (!s || s.length < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 600, H = 130;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  ctx.font = '10px -apple-system, Segoe UI, sans-serif';
+  const end = s[s.length-1][1];
+  const start = (anaDgbWin === Infinity) ? s[0][1] : Math.max(s[0][1], end - anaDgbWin);
+  const span = Math.max(1, end - start);
+  const padL = 8, padR = 8, laneTop = 34, laneH = 46, plotW = W - padL - padR;
+  const xT = t => padL + (t - start) / span * plotW;
+  const H1 = 3600000, D1 = 86400000;
+  const REST = 2.5;
+
+  // km-bereik in dit venster (voor de km-lijn)
+  let kmLo = histKmAtTime(s, start), kmHi = histKmAtTime(s, end);
+  if (kmHi <= kmLo) kmHi = kmLo + 1;
+  const yKm = km => laneTop + laneH - (km - kmLo) / (kmHi - kmLo) * laneH;
+
+  // tijd-gridlines + labels
+  let step;
+  if (span <= 2*H1) step = 15*60000; else if (span <= 12*H1) step = H1;
+  else if (span <= 2*D1) step = 6*H1; else if (span <= 5*D1) step = 12*H1; else step = D1;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  let lastDay = null;
+  for (let t = Math.ceil(start / step) * step; t <= end; t += step) {
+    const x = xT(t);
+    ctx.strokeStyle = 'rgba(0,0,0,.07)'; ctx.beginPath(); ctx.moveTo(x, laneTop - 4); ctx.lineTo(x, laneTop + laneH); ctx.stroke();
+    const dk = localDayKey(t);
+    let lbl;
+    if (span > 12*H1) { lbl = (dk !== lastDay) ? localDayLabel(dk) : localClock(t); lastDay = dk; }
+    else lbl = localClock(t);
+    ctx.fillStyle = '#6b7280'; ctx.fillText(lbl, x, 6);
+  }
+
+  // lane-achtergrond
+  ctx.fillStyle = '#eef2f4'; ctx.fillRect(padL, laneTop, plotW, laneH);
+
+  // groepeer in bewegend-segmenten en stop-runs
+  const stops = [];
+  let run = null;
+  for (let i = 1; i < s.length; i++) {
+    const [k0, t0] = s[i-1], [k1, t1] = s[i];
+    if (t1 < start || t0 > end) { if (run) { stops.push(run); run = null; } continue; }
+    const dt = t1 - t0; if (dt <= 0) continue;
+    const sp = Math.max(0, k1 - k0) / (dt/3600000);
+    const a = Math.max(start, t0), b = Math.min(end, t1);
+    if (sp < REST) {
+      if (run) { run.t1 = b; run.dur += (b - a); } else run = { t0: a, t1: b, dur: b - a };
+    } else {
+      if (run) { stops.push(run); run = null; }
+      ctx.fillStyle = '#14b8a6'; ctx.fillRect(xT(a), laneTop, Math.max(1, xT(b) - xT(a)), laneH);
+    }
+  }
+  if (run) stops.push(run);
+
+  // stops tekenen + labelen
+  ctx.textBaseline = 'top';
+  for (const st of stops) {
+    const x0 = xT(st.t0), w = Math.max(1, xT(st.t1) - x0);
+    const long = st.dur >= 20*60000;
+    ctx.fillStyle = long ? '#f59e0b' : '#cbd5e1'; ctx.fillRect(x0, laneTop, w, laneH);
+    if (st.dur >= 30*60000 && w > 26) {
+      ctx.fillStyle = '#7c3a00'; ctx.textAlign = 'center';
+      const txt = (st.dur >= 2*H1 ? '💤 ' : '') + anaDur(st.dur);
+      ctx.fillText(txt, x0 + w/2, laneTop + laneH + 4);
+    }
+  }
+
+  // km-lijn over de lane
+  ctx.strokeStyle = '#1c2635'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.beginPath();
+  let started = false;
+  for (let i = 0; i < s.length; i++) {
+    const [km, t] = s[i];
+    if (t < start || t > end) continue;
+    const x = xT(t), y = yKm(km);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // lane-rand
+  ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 1; ctx.strokeRect(padL, laneTop, plotW, laneH);
 }
 
 function renderSplits(a, b) {
