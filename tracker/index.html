@@ -2412,10 +2412,17 @@ function setViewLeaderLow(latlng, zoom) {
 let ghostData = null;
 const ghostMarkers = {};
 let route2024 = null;   // [[lat,lon,cumKm],...] — voor de 2024-ghosts (route week af van 2026)
+const ghostYearTotal = {};  // jaar → max km in de ghost-data (≈ officiële routelengte dat jaar)
 async function loadGhosts() {
   if (!SLUG) return;
   try { const r = await fetch(`${API}/${SLUG}/ghosts.json`); if (r.ok) ghostData = await r.json(); } catch(e) {}
   try { const r = await fetch(`${API}/${SLUG}/route2024.json`); if (r.ok) route2024 = await r.json(); } catch(e) {}
+  for (const g of ghostData || []) {
+    if (g.points && g.points.length) {
+      const t = g.points[g.points.length - 1][1];
+      if (t > (ghostYearTotal[g.year] || 0)) ghostYearTotal[g.year] = t;
+    }
+  }
   updateGhosts();
 }
 function route2024PointAtKm(km) {
@@ -2429,9 +2436,16 @@ function route2024PointAtKm(km) {
   const f = (km - a[2]) / ((b[2]-a[2])||1);
   return [a[0]+f*(b[0]-a[0]), a[1]+f*(b[1]-a[1])];
 }
-// 2024-ghosts volgen de 2024-route; overige (2025) de route van dit jaar
+// 2024-ghosts volgen de 2024-route; overige (2025) de route van dit jaar.
+// De ghost-km loopt op trackleaders' afstandsschaal, die iets afwijkt van de lengte van
+// onze (gesamplede) polyline → proportioneel schalen, anders schuift de positie verderop.
 function ghostPointAtKm(g, km) {
-  return (g.year === 2024 && route2024) ? route2024PointAtKm(km) : routePointAtKm(km);
+  const use2024 = g.year === 2024 && route2024;
+  const total = use2024 ? route2024[route2024.length - 1][2] : (routeCum[routeCum.length - 1] || 0);
+  const gtot = ghostYearTotal[g.year] || 0;
+  let scale = (gtot > 0 && total > 0) ? total / gtot : 1;
+  if (scale < 0.9 || scale > 1.1) scale = 1;   // alleen kleine sampling-correctie, geen rare sprongen
+  return use2024 ? route2024PointAtKm(km * scale) : routePointAtKm(km * scale);
 }
 function ghostKmAt(pts, hrs) {              // interpoleer km op verstreken uren; null = al gefinisht
   if (!pts || !pts.length) return null;
