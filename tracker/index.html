@@ -1216,6 +1216,15 @@ function eleAtKm(km) {
   const f = k1 > k0 ? (km - k0) / (k1 - k0) : 0;
   return ele[i0] + f * (ele[i] - ele[i0]);
 }
+// Route-km van een rijder: snap diens lat/lon op de route (= waar de kaartmarker staat).
+// FMC's distanceOnTrack is grof/gekwantiseerd (meerdere rijders krijgen dezelfde waarde) →
+// dots stapelden op het profiel terwijl ze op de kaart verspreid staan. Gecachet op het
+// rider-object (elke fetch vers) zodat de O(n)-snap niet elke frame opnieuw loopt.
+function riderRouteKm(r) {
+  if (r._epKm == null)
+    r._epKm = routePts.length ? nearestRoutePt(r.latitude, r.longitude).km : (r.distanceOnTrack || 0);
+  return r._epKm;
+}
 // top-N rijders op afstand (zelfde volgorde als het klassement)
 function topElevRiders() {
   return riders
@@ -1392,7 +1401,7 @@ function drawElevProfile() {
   // rijders op het profiel (zelfde top-N als op de kaart)
   if (showElevRiders) {
     for (const r of topElevRiders()) {
-      const km = r.distanceOnTrack;
+      const km = riderRouteKm(r);
       if (km < km0 || km > km1) continue;
       const x = xToPx(km), y = yToPx(eleAtKm(km));
       ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
