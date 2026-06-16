@@ -922,7 +922,7 @@ function buildLayerSwitcher() {
           <span>${def.label}</span>
         </div>`).join('')}
       </div>
-      <div class="ls-ovs">
+      <div class="ls-ovs" id="ls-ovs" style="display:none">
         <span class="ls-ov-lbl">Weer nu</span>
         ${Object.entries(WX_OVERLAYS).map(([id, def]) => `
         <div class="ls-ov${activeOverlays[id] ? ' active' : ''}" data-ov="${id}" onclick="toggleOverlay('${id}')">${def.label}</div>`).join('')}
@@ -930,9 +930,21 @@ function buildLayerSwitcher() {
       <div id="wx-legend" class="wx-legend"></div>
     </div>`;
   renderWxLegend();
+  wxHealthCheck();
   document.addEventListener('click', e => {
     if (!sw.contains(e.target)) closeLsPanel();
   }, { capture: true, passive: true });
+}
+
+// "Weer nu"-overlays alleen tonen als de OWM-proxy echt tegels levert (key actief).
+// Zo verschijnt de optie vanzelf zodra de key werkt, en blijft hij weg bij 401/503.
+async function wxHealthCheck() {
+  const row = document.getElementById('ls-ovs');
+  if (!row) return;
+  try {
+    const r = await fetch(`${API}/api/wx/temp_new/3/1/2`, { cache: 'no-store' });
+    row.style.display = (r.ok && (r.headers.get('content-type') || '').includes('image')) ? '' : 'none';
+  } catch(e) { row.style.display = 'none'; }
 }
 
 function toggleLsPanel(e) {
