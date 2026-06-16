@@ -3422,9 +3422,10 @@ function anaRender() {
 }
 
 function renderDagboek(id) {
-  const s = riderHistoryCache?.[String(id)];
+  // schone bron: tlflow (toprijders) of anders GPS-history. anaSeries levert beide als [[km,ts],…]
+  const s = anaSeries(String(id));
   if (!s || s.length < 2) return `<div class="ana-empty">Nog geen geschiedenis voor deze rijder.</div>`;
-  const REST = 2.5, days = {};
+  const REST = 2.5, MAXSP = 40, days = {};   // MAXSP = cap tegen data-glitches (bv. km-sprong → 200 km/u)
   const wEnd = s[s.length-1][1];
   const wStart = (anaDgbWin === Infinity) ? s[0][1] : Math.max(s[0][1], wEnd - anaDgbWin);
   for (let i = 1; i < s.length; i++) {
@@ -3432,10 +3433,12 @@ function renderDagboek(id) {
     const a = Math.max(wStart, t0), b = Math.min(wEnd, t1); if (b <= a) continue;  // alleen binnen de gekozen periode
     const sp = Math.max(0, k1 - k0) / (dt/3600000);                                // snelheid van het hele interval
     const kmA = k0 + (k1-k0)*((a-t0)/dt), kmB = k0 + (k1-k0)*((b-t0)/dt);          // km op de geklemde randen
+    const dkm = Math.max(0, kmB - kmA);
     const key = localDayKey(a);
     const d = days[key] || (days[key] = { km:0, mov:0, rest:0, sk:kmA, ek:kmB, st:a, et:b });
-    d.km += Math.max(0, kmB - kmA); d.ek = kmB; d.et = b;
-    if (sp < REST) d.rest += (b - a); else d.mov += (b - a);
+    d.km += dkm; d.ek = kmB; d.et = b;
+    // glitch-interval (onmogelijk hoge snelheid) → reken bewegingstijd o.b.v. cap, niet de te korte dt
+    if (sp < REST) d.rest += (b - a); else d.mov += (sp > MAXSP ? (dkm / MAXSP) * 3600000 : (b - a));
   }
   const keys = Object.keys(days).sort();
   if (!keys.length) return `<div class="ana-empty">Nog geen dagdata.</div>`;
@@ -3481,7 +3484,7 @@ function dgbSetHover(px) {
 function drawDagboekTimeline(id) {
   const cv = document.getElementById('dgb-timeline');
   if (!cv) return;
-  const s = riderHistoryCache?.[String(id)];
+  const s = anaSeries(String(id));
   if (!s || s.length < 2) return;
   const dpr = window.devicePixelRatio || 1;
   const W = cv.clientWidth || 600, H = 130;
