@@ -579,7 +579,7 @@
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()" title="Zoek plaatsen/POI's langs de route">🔍 <span class="bl">Langs route</span></button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()" title="Race Flow: km-vs-tijd grafiek">📊 <span class="bl">Race Flow</span></button>
         <button class="ctrl-btn" id="btn-analyse" onclick="openAnalyse()" title="Analyse: dagboek per rijder, segment-splits, vergelijking met record, veldoverzicht">🔬 <span class="bl">Analyse</span></button>
-        <button class="ctrl-btn" id="btn-weer" onclick="openWxForecast()" title="Weer & forecast (Windy): geanimeerde wind, temperatuur, neerslag met tijdbalk tot ~10 dagen">🌦 <span class="bl">Weer</span></button>
+        <button class="ctrl-btn" id="btn-weer" onclick="openWxForecast()" title="Forecast (Windy): geanimeerde wind, temperatuur, neerslag met tijdbalk tot ~10 dagen. Apart model dan de 'Weer nu'-overlay op de kaart.">🌦 <span class="bl">Forecast</span></button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none" title="Uitslagen">🏆 <span class="bl">Resultaten</span></button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 <span class="bl">Routeklassement</span></button>
         <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 <span class="bl">Afstand tot punt</span></button>
@@ -776,7 +776,7 @@
   <div class="chart-inner" style="width:min(96vw,1000px);height:90vh">
     <div class="chart-hdr"><span>🌦 Weer &amp; forecast</span><button class="chart-close" onclick="closeWxForecast()">✕</button></div>
     <div style="flex:1;min-height:0"><iframe id="wx-frame" style="width:100%;height:100%;border:0;display:block" loading="lazy" allow="fullscreen"></iframe></div>
-    <div class="ana-sub" style="padding:6px 12px">Sleep de tijdbalk onderin voor de voorspelling (tot ~10 dagen vooruit). Wissel overlay (wind/temp/regen/wolken) links in Windy. Bron: Windy.com</div>
+    <div class="ana-sub" style="padding:6px 12px">Sleep de tijdbalk onderin voor de voorspelling (tot ~10 dagen vooruit). Wissel overlay (wind/temp/regen/wolken) links in Windy. Bron: Windy.com (ECMWF/GFS) — apart model dan de "Weer nu"-overlay op de kaart, kan iets afwijken.</div>
   </div>
 </div>
 
@@ -876,7 +876,7 @@ function renderWxLegend() {
   leg.classList.add('show');
   leg.innerHTML = act.map(id => { const d = WX_OVERLAYS[id];
     return `<div class="wx-leg-row"><span>${d.label}</span><span>${d.lo}</span><div class="wx-grad" style="background:${d.grad}"></div><span>${d.hi}</span></div>`;
-  }).join('') + `<div class="wx-leg-src">weer © OpenWeather</div>`;
+  }).join('') + `<div class="wx-leg-src">actueel weer · © OpenWeather</div>`;
 }
 
 function setBaseLayer(id) {
@@ -923,7 +923,7 @@ function buildLayerSwitcher() {
         </div>`).join('')}
       </div>
       <div class="ls-ovs">
-        <span class="ls-ov-lbl">Overlay</span>
+        <span class="ls-ov-lbl">Weer nu</span>
         ${Object.entries(WX_OVERLAYS).map(([id, def]) => `
         <div class="ls-ov${activeOverlays[id] ? ' active' : ''}" data-ov="${id}" onclick="toggleOverlay('${id}')">${def.label}</div>`).join('')}
       </div>
