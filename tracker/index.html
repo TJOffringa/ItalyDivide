@@ -143,6 +143,14 @@
     .ws-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     #ws-label { font-size: 11px; font-weight: 700; color: var(--teal); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #ws-range { width: 100%; accent-color: var(--teal); height: 4px; cursor: pointer; }
+    #fc-legend {
+      position: absolute; bottom: 58px; left: 10px; z-index: 850;
+      flex-direction: column; gap: 3px; background: rgba(255,255,255,.92);
+      border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; pointer-events: none;
+    }
+    .fc-leg-row { display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); }
+    .fc-leg-row > span { min-width: 30px; text-align: center; }
+    .fc-grad { width: 90px; height: 7px; border-radius: 3px; }
     /* Op mobiel: labels behouden maar compacter, en knoppen rekken uit om elke rij
        volledig te vullen (geen ragged ruimte) zodat er meer per rij passen en het
        klassement niet onder de vouw verdwijnt. */
@@ -698,6 +706,7 @@
         </div>
         <button class="ws-btn" id="ws-plus" onclick="windStep(1)" title="Later">+</button>
       </div>
+      <div id="fc-legend" style="display:none"></div>
       <div id="refresh-bar">↺ —</div>
       <button id="map-fs-close" onclick="toggleFullscreen()" title="Sluiten (Esc)" style="display:none">✕</button>
       <div id="race-clock" style="display:none">
@@ -970,15 +979,7 @@ function buildLayerSwitcher() {
           <span>${def.label}</span>
         </div>`).join('')}
       </div>
-      <div class="ls-ovs" id="ls-ovs" style="display:none">
-        <span class="ls-ov-lbl">Weer nu</span>
-        ${Object.entries(WX_OVERLAYS).map(([id, def]) => `
-        <div class="ls-ov${activeOverlays[id] ? ' active' : ''}" data-ov="${id}" onclick="toggleOverlay('${id}')">${def.label}</div>`).join('')}
-      </div>
-      <div id="wx-legend" class="wx-legend"></div>
     </div>`;
-  renderWxLegend();
-  wxHealthCheck();
   document.addEventListener('click', e => {
     if (!sw.contains(e.target)) closeLsPanel();
   }, { capture: true, passive: true });
@@ -1016,38 +1017,37 @@ const OV_ITEMS = [
   { id: 'ondergrond', icon: '🛣', label: 'Ondergrond',       srcBtn: 'btn-surface', fn: toggleSurface,  need: () => ovAvail.ondergrond },
   { id: 'webcams',    icon: '📷', label: 'Webcams',          fn: toggleCams,        need: () => webcamsAvailable },
   { id: 'wind',       icon: '🌬', label: 'Wind (animatie)',  fn: toggleWind },
+  { id: 'temp',       icon: '🌡', label: 'Temperatuur',      fn: toggleTempFc },
+  { id: 'precip',     icon: '🌧', label: 'Neerslag',         fn: togglePrecipFc },
 ];
 function ovActive(it) {
   if (it.id === 'webcams') return !!camLayer;
-  if (it.id === 'wind') return !!windLayer;
+  if (it.id === 'wind' || it.id === 'temp' || it.id === 'precip') return !!fcOverlays[it.id];
   if (it.srcBtn) return !!document.getElementById(it.srcBtn)?.classList.contains('active');
   return false;
 }
 
 // Geanimeerde wind-overlay (leaflet-velocity) op onze eigen kaart — rijders blijven
 // zichtbaar (canvas onder de markerlaag). Bron: Open-Meteo windgrid via /api/wind.
-let windLayer = null, windTimes = [], windIdx = 0, windNowIndex = 0, windFetchTimer = null;
-async function toggleWind() {
+// ── Forecast-overlays (Open-Meteo): wind-animatie + gekleurde temp/neerslag,
+// allemaal op één gedeelde tijd-as met de schuifbalk onderaan de kaart. ──────────
+let fcTimes = [], fcIdx = 0, fcNowIndex = 0, fcTimer = null;
+const fcOverlays = {};                 // id → updater(i)  (actieve forecast-lagen)
+let windLayer = null, tempLayer = null, precipLayer = null;
+
+async function fcEnsureMeta() {
+  if (fcTimes.length) return true;
+  const meta = await fetch(`${API}/api/wind/meta`).then(r => r.ok ? r.json() : null);
+  if (meta && meta.times) { fcTimes = meta.times; fcNowIndex = meta.nowIndex || 0; fcIdx = fcNowIndex; return true; }
+  return false;
+}
+function fcSliderSync() {
   const slider = document.getElementById('wind-slider');
-  if (windLayer) { map.removeLayer(windLayer); windLayer = null; if (slider) slider.style.display = 'none'; return; }
-  if (typeof L.velocityLayer !== 'function') { console.warn('leaflet-velocity niet geladen'); return; }
-  try {
-    const meta = await fetch(`${API}/api/wind/meta`).then(r => r.ok ? r.json() : null);
-    if (meta && meta.times) { windTimes = meta.times; windNowIndex = meta.nowIndex || 0; windIdx = windNowIndex; }
-    const r = await fetch(`${API}/api/wind?i=${windIdx}`);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    windLayer = L.velocityLayer({
-      displayValues: true,
-      displayOptions: { velocityType: 'Wind', position: 'bottomleft', emptyString: 'Geen winddata', angleConvention: 'bearingCW', speedUnit: 'k/h' },
-      data, opacity: 0.85, maxVelocity: 22, velocityScale: 0.008,
-    }).addTo(map);
-    if (windTimes.length && slider) {
-      const rng = document.getElementById('ws-range');
-      rng.max = windTimes.length - 1; rng.value = windIdx;
-      updateWindLabel(); slider.style.display = 'flex';
-    }
-  } catch(e) { console.error('Wind:', e); windLayer = null; }
+  if (!slider) return;
+  if (!Object.keys(fcOverlays).length) { slider.style.display = 'none'; fcRenderLegend(); return; }
+  const rng = document.getElementById('ws-range');
+  rng.max = Math.max(0, fcTimes.length - 1); rng.value = fcIdx;
+  updateWindLabel(); slider.style.display = 'flex'; fcRenderLegend();
 }
 function windTimeLabel(iso) {
   const d = new Date(iso + 'Z');
@@ -1055,21 +1055,93 @@ function windTimeLabel(iso) {
 }
 function updateWindLabel() {
   const el = document.getElementById('ws-label');
-  if (!el || !windTimes.length) return;
-  el.textContent = (windIdx === windNowIndex ? 'nu · ' : '') + windTimeLabel(windTimes[windIdx]);
+  if (!el || !fcTimes.length) return;
+  el.textContent = (fcIdx === fcNowIndex ? 'nu · ' : '') + windTimeLabel(fcTimes[fcIdx]);
 }
 function windScrub(val) {
-  if (!windTimes.length) return;
-  windIdx = Math.max(0, Math.min(windTimes.length - 1, parseInt(val) || 0));
-  document.getElementById('ws-range').value = windIdx;
+  if (!fcTimes.length) return;
+  fcIdx = Math.max(0, Math.min(fcTimes.length - 1, parseInt(val) || 0));
+  document.getElementById('ws-range').value = fcIdx;
   updateWindLabel();
-  clearTimeout(windFetchTimer);
-  windFetchTimer = setTimeout(loadWindFrame, 160);   // debounce tijdens slepen
+  clearTimeout(fcTimer);
+  fcTimer = setTimeout(() => { Object.values(fcOverlays).forEach(fn => fn(fcIdx)); }, 160);   // debounce
 }
-function windStep(d) { if (windTimes.length) windScrub(windIdx + d); }
-async function loadWindFrame() {
-  if (!windLayer) return;
-  try { const r = await fetch(`${API}/api/wind?i=${windIdx}`); if (r.ok) windLayer.setData(await r.json()); } catch(e) {}
+function windStep(d) { if (fcTimes.length) windScrub(fcIdx + d); }
+
+// Wind-animatie (leaflet-velocity)
+async function toggleWind() {
+  if (fcOverlays.wind) { if (windLayer) { map.removeLayer(windLayer); windLayer = null; } delete fcOverlays.wind; fcSliderSync(); return; }
+  if (typeof L.velocityLayer !== 'function') { console.warn('leaflet-velocity niet geladen'); return; }
+  if (!await fcEnsureMeta()) return;
+  try {
+    const data = await fetch(`${API}/api/wind?i=${fcIdx}`).then(r => r.json());
+    windLayer = L.velocityLayer({
+      displayValues: true,
+      displayOptions: { velocityType: 'Wind', position: 'bottomleft', emptyString: 'Geen winddata', angleConvention: 'bearingCW', speedUnit: 'k/h' },
+      data, opacity: 0.85, maxVelocity: 22, velocityScale: 0.008,
+    }).addTo(map);
+    fcOverlays.wind = async (i) => { try { const d = await fetch(`${API}/api/wind?i=${i}`).then(r => r.json()); if (windLayer) windLayer.setData(d); } catch(e) {} };
+    fcSliderSync();
+  } catch(e) { console.error('Wind:', e); }
+}
+
+// Gekleurde temp-/neerslag-laag, gerenderd uit het Open-Meteo grid
+function tempColor(t) {
+  if (t == null) return [0, 0, 0, 0];
+  const s = [[-20,8,48,107],[-10,33,102,172],[0,103,169,207],[8,116,196,118],[16,255,237,160],[24,253,174,97],[32,215,48,39],[42,140,20,20]];
+  if (t <= s[0][0]) return [s[0][1], s[0][2], s[0][3], 165];
+  for (let k = 1; k < s.length; k++) if (t <= s[k][0]) { const a = s[k-1], b = s[k], f = (t-a[0])/(b[0]-a[0]); return [Math.round(a[1]+f*(b[1]-a[1])), Math.round(a[2]+f*(b[2]-a[2])), Math.round(a[3]+f*(b[3]-a[3])), 165]; }
+  const e = s[s.length-1]; return [e[1], e[2], e[3], 165];
+}
+function precipColor(mm) {
+  if (!mm || mm <= 0) return [0, 0, 0, 0];
+  const m = Math.min(mm, 12);
+  const s = [[0,200,230,255],[0.5,150,200,255],[2,80,140,240],[5,40,80,220],[12,120,40,200]];
+  let c = [120, 40, 200];
+  for (let k = 1; k < s.length; k++) if (m <= s[k][0]) { const a = s[k-1], b = s[k], f = (m-a[0])/((b[0]-a[0])||1); c = [Math.round(a[1]+f*(b[1]-a[1])), Math.round(a[2]+f*(b[2]-a[2])), Math.round(a[3]+f*(b[3]-a[3]))]; break; }
+  return [c[0], c[1], c[2], Math.round(70 + Math.min(1, m/8) * 150)];
+}
+async function fcRenderGrid(varName, i) {
+  try {
+    const g = await fetch(`${API}/api/wx-data?var=${varName}&i=${i}`).then(r => r.json());
+    const { nx, ny, lo1, la1, lo2, la2, values } = g;
+    const cv = document.createElement('canvas'); cv.width = nx; cv.height = ny;
+    const ctx = cv.getContext('2d'); const img = ctx.createImageData(nx, ny);
+    const cf = varName === 'temp' ? tempColor : precipColor;
+    for (let k = 0; k < nx * ny; k++) { const c = cf(values[k]); img.data[k*4] = c[0]; img.data[k*4+1] = c[1]; img.data[k*4+2] = c[2]; img.data[k*4+3] = c[3]; }
+    ctx.putImageData(img, 0, 0);
+    const url = cv.toDataURL(), bounds = [[la2, lo1], [la1, lo2]];
+    if (varName === 'temp') {
+      if (tempLayer) tempLayer.setUrl(url);
+      else tempLayer = L.imageOverlay(url, bounds, { opacity: 0.5, pane: 'wxPane', interactive: false }).addTo(map);
+    } else {
+      if (precipLayer) precipLayer.setUrl(url);
+      else precipLayer = L.imageOverlay(url, bounds, { opacity: 0.6, pane: 'wxPane', interactive: false }).addTo(map);
+    }
+  } catch(e) { console.error('wx grid', e); }
+}
+async function toggleTempFc() {
+  if (fcOverlays.temp) { if (tempLayer) { map.removeLayer(tempLayer); tempLayer = null; } delete fcOverlays.temp; fcSliderSync(); return; }
+  if (!await fcEnsureMeta()) return;
+  await fcRenderGrid('temp', fcIdx);
+  fcOverlays.temp = (i) => fcRenderGrid('temp', i);
+  fcSliderSync();
+}
+async function togglePrecipFc() {
+  if (fcOverlays.precip) { if (precipLayer) { map.removeLayer(precipLayer); precipLayer = null; } delete fcOverlays.precip; fcSliderSync(); return; }
+  if (!await fcEnsureMeta()) return;
+  await fcRenderGrid('precip', fcIdx);
+  fcOverlays.precip = (i) => fcRenderGrid('precip', i);
+  fcSliderSync();
+}
+function fcRenderLegend() {
+  const el = document.getElementById('fc-legend');
+  if (!el) return;
+  const parts = [];
+  if (fcOverlays.temp)   parts.push(`<div class="fc-leg-row"><span>−20°</span><div class="fc-grad" style="background:linear-gradient(90deg,#08306b,#2166ac,#67a9cf,#74c476,#ffedA0,#fdae61,#d7302f,#8c1414)"></div><span>40°</span></div>`);
+  if (fcOverlays.precip) parts.push(`<div class="fc-leg-row"><span>droog</span><div class="fc-grad" style="background:linear-gradient(90deg,rgba(200,230,255,0),#96c8ff,#5090f0,#2850dc,#7828c8)"></div><span>nat</span></div>`);
+  el.innerHTML = parts.join('');
+  el.style.display = parts.length ? 'flex' : 'none';
 }
 function renderOverlaysPanel() {
   const p = document.getElementById('overlays-panel');
@@ -1101,6 +1173,9 @@ function toggleOverlaysPanel(e) {
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
   map = L.map('map', { zoomControl: false }).setView([48, 10], 5);
+  map.createPane('wxPane');                       // weerlagen tussen basiskaart en route/rijders
+  map.getPane('wxPane').style.zIndex = 250;
+  map.getPane('wxPane').style.pointerEvents = 'none';
   setBaseLayer(activeBaseId);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   // Schaalbalk in km — beweegt automatisch mee met zoomen (afstanden inschatten)
