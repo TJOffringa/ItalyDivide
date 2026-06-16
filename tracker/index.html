@@ -524,6 +524,10 @@
     .leaflet-popup-content { margin: 10px 14px; font-size: 13px; }
     .pu-name { font-weight: 700; margin-bottom: 4px; }
     .pu-meta { font-size: 11px; color: var(--muted); }
+    .pu-gmaps { display: block; margin-top: 8px; padding: 6px 8px; text-align: center;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+      color: var(--teal); font-size: 11px; font-weight: 600; text-decoration: none; }
+    .pu-gmaps:hover { border-color: var(--teal); }
     .pu-stats { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
     .pu-stat { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); }
     .pu-stat b { color: var(--text); font-size: 12px; white-space: nowrap; }
@@ -1826,8 +1830,21 @@ function makeStopIcon(s) {
     iconAnchor: [6, 6], iconSize: null });
 }
 
+function stopPopupHtml(s) {
+  const dur = durStr(s.durationMs);
+  const time = fmtBothTz(s.startMs);
+  const lat = (+s.lat).toFixed(5), lon = (+s.lon).toFixed(5);
+  const gmaps = `https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}`;
+  const head = s.ongoing ? `⏸ Stop · ${dur}` : s.estimated ? `~ Stop · ${dur}` : `Stop · ${dur}`;
+  const meta = s.ongoing ? `staat hier · sinds ${time}` : s.estimated ? `geschat (datagat) · ${time}` : time;
+  return `<div class="pu-name">${head}</div>
+    <div class="pu-meta">${meta}</div>
+    <div class="pu-meta" style="margin-top:4px">📍 ${lat}, ${lon}</div>
+    <a href="${gmaps}" target="_blank" rel="noopener" class="pu-gmaps">🗺 Bekijk op Google Maps</a>`;
+}
+
 function drawStopMarkers(stops) {
-  return stops.map(s => L.marker([s.lat, s.lon], { icon: makeStopIcon(s), interactive: false }).addTo(map));
+  return stops.map(s => L.marker([s.lat, s.lon], { icon: makeStopIcon(s) }).addTo(map).bindPopup(() => stopPopupHtml(s)));
 }
 
 async function toggleTrack(id) {
