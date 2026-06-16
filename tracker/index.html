@@ -126,6 +126,23 @@
     }
     .ov-row.active .ov-check { background: var(--teal); border-color: var(--teal); }
     .ov-row .ov-arrow { margin-left: auto; color: var(--muted); font-size: 11px; }
+
+    /* ── Wind-forecast schuifbalk (onderaan de kaart) ── */
+    #wind-slider {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 900;
+      display: flex; align-items: center; gap: 8px; width: min(92%, 460px);
+      background: rgba(255,255,255,.95); border: 1px solid var(--border); border-radius: 10px;
+      padding: 6px 8px; box-shadow: 0 2px 10px rgba(28,38,53,.2);
+    }
+    .ws-btn {
+      flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text); font-size: 20px; font-weight: 700; cursor: pointer;
+      line-height: 1; display: flex; align-items: center; justify-content: center;
+    }
+    .ws-btn:active { background: var(--teal); color: #fff; }
+    .ws-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    #ws-label { font-size: 11px; font-weight: 700; color: var(--teal); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #ws-range { width: 100%; accent-color: var(--teal); height: 4px; cursor: pointer; }
     /* Op mobiel: labels behouden maar compacter, en knoppen rekken uit om elke rij
        volledig te vullen (geen ragged ruimte) zodat er meer per rij passen en het
        klassement niet onder de vouw verdwijnt. */
@@ -673,6 +690,14 @@
         <div id="rrp-list"><div class="rrp-empty">Klik op een punt op de route</div></div>
       </div>
       <div id="layer-switcher"></div>
+      <div id="wind-slider" style="display:none">
+        <button class="ws-btn" id="ws-minus" onclick="windStep(-1)" title="Eerder">−</button>
+        <div class="ws-mid">
+          <div id="ws-label">nu</div>
+          <input type="range" id="ws-range" min="0" max="0" value="0" oninput="windScrub(this.value)" aria-label="Wind-forecast tijd">
+        </div>
+        <button class="ws-btn" id="ws-plus" onclick="windStep(1)" title="Later">+</button>
+      </div>
       <div id="refresh-bar">↺ —</div>
       <button id="map-fs-close" onclick="toggleFullscreen()" title="Sluiten (Esc)" style="display:none">✕</button>
       <div id="race-clock" style="display:none">
@@ -1001,21 +1026,50 @@ function ovActive(it) {
 
 // Geanimeerde wind-overlay (leaflet-velocity) op onze eigen kaart — rijders blijven
 // zichtbaar (canvas onder de markerlaag). Bron: Open-Meteo windgrid via /api/wind.
-let windLayer = null;
+let windLayer = null, windTimes = [], windIdx = 0, windNowIndex = 0, windFetchTimer = null;
 async function toggleWind() {
-  if (windLayer) { map.removeLayer(windLayer); windLayer = null; return; }
+  const slider = document.getElementById('wind-slider');
+  if (windLayer) { map.removeLayer(windLayer); windLayer = null; if (slider) slider.style.display = 'none'; return; }
   if (typeof L.velocityLayer !== 'function') { console.warn('leaflet-velocity niet geladen'); return; }
   try {
-    const r = await fetch(`${API}/api/wind`);
+    const meta = await fetch(`${API}/api/wind/meta`).then(r => r.ok ? r.json() : null);
+    if (meta && meta.times) { windTimes = meta.times; windNowIndex = meta.nowIndex || 0; windIdx = windNowIndex; }
+    const r = await fetch(`${API}/api/wind?i=${windIdx}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     windLayer = L.velocityLayer({
       displayValues: true,
-      displayOptions: { velocityType: 'Wind', position: 'bottomleft', emptyString: 'Geen winddata',
-        angleConvention: 'bearingCW', speedUnit: 'k/h', displayPosition: 'bottomleft', displayEmptyString: 'Geen winddata' },
+      displayOptions: { velocityType: 'Wind', position: 'bottomleft', emptyString: 'Geen winddata', angleConvention: 'bearingCW', speedUnit: 'k/h' },
       data, opacity: 0.85, maxVelocity: 22, velocityScale: 0.008,
     }).addTo(map);
+    if (windTimes.length && slider) {
+      const rng = document.getElementById('ws-range');
+      rng.max = windTimes.length - 1; rng.value = windIdx;
+      updateWindLabel(); slider.style.display = 'flex';
+    }
   } catch(e) { console.error('Wind:', e); windLayer = null; }
+}
+function windTimeLabel(iso) {
+  const d = new Date(iso + 'Z');
+  return new Intl.DateTimeFormat('nl-NL', { timeZone: raceConfig?.localTz || 'America/Denver', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
+}
+function updateWindLabel() {
+  const el = document.getElementById('ws-label');
+  if (!el || !windTimes.length) return;
+  el.textContent = (windIdx === windNowIndex ? 'nu · ' : '') + windTimeLabel(windTimes[windIdx]);
+}
+function windScrub(val) {
+  if (!windTimes.length) return;
+  windIdx = Math.max(0, Math.min(windTimes.length - 1, parseInt(val) || 0));
+  document.getElementById('ws-range').value = windIdx;
+  updateWindLabel();
+  clearTimeout(windFetchTimer);
+  windFetchTimer = setTimeout(loadWindFrame, 160);   // debounce tijdens slepen
+}
+function windStep(d) { if (windTimes.length) windScrub(windIdx + d); }
+async function loadWindFrame() {
+  if (!windLayer) return;
+  try { const r = await fetch(`${API}/api/wind?i=${windIdx}`); if (r.ok) windLayer.setData(await r.json()); } catch(e) {}
 }
 function renderOverlaysPanel() {
   const p = document.getElementById('overlays-panel');
