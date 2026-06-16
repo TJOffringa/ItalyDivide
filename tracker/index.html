@@ -111,21 +111,22 @@
     /* ── Overlays-paneel ── */
     #overlays-panel {
       padding: 6px 12px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-      display: flex; flex-direction: column; gap: 4px;
+      display: flex; flex-wrap: wrap; gap: 6px;
     }
     .ov-row {
-      display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
-      padding: 6px 8px; border-radius: 6px; font-size: 12px; color: var(--text);
-      background: var(--surface2); border: 1px solid var(--border);
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+      padding: 4px 10px; border-radius: 6px; font-size: 11px; color: var(--muted);
+      background: var(--surface2); border: 1px solid var(--border); white-space: nowrap;
     }
-    .ov-row:hover { border-color: var(--muted); }
+    .ov-row:hover { border-color: var(--muted); color: var(--text); }
     .ov-row.active { border-color: var(--teal); color: var(--teal); font-weight: 600; }
     .ov-check {
-      width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--muted);
-      display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; color: #fff;
+      width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--muted);
+      display: inline-flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; color: #fff;
     }
     .ov-row.active .ov-check { background: var(--teal); border-color: var(--teal); }
-    .ov-row .ov-arrow { margin-left: auto; color: var(--muted); font-size: 11px; }
+    .ov-row .ov-arrow { color: var(--muted); font-size: 10px; }
+    @media (max-width: 640px) { .ov-row { font-size: 9px; padding: 3px 6px; } }
 
     /* ── Wind-forecast schuifbalk (onderaan de kaart) ── */
     #wind-slider {
@@ -1078,7 +1079,7 @@ async function toggleWind() {
     windLayer = L.velocityLayer({
       displayValues: true,
       displayOptions: { velocityType: 'Wind', position: 'bottomleft', emptyString: 'Geen winddata', angleConvention: 'bearingCW', speedUnit: 'k/h' },
-      data, opacity: 0.85, maxVelocity: 22, velocityScale: 0.008,
+      data, opacity: 0.9, maxVelocity: 18, velocityScale: 0.014, lineWidth: 2.6, particleMultiplier: 1 / 200,
     }).addTo(map);
     fcOverlays.wind = async (i) => { try { const d = await fetch(`${API}/api/wind?i=${i}`).then(r => r.json()); if (windLayer) windLayer.setData(d); } catch(e) {} };
     fcSliderSync();
