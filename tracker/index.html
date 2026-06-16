@@ -290,9 +290,12 @@
     }
     .ls-ov:hover { border-color: var(--muted); }
     .ls-ov.active { background: var(--teal); color: var(--cream); border-color: var(--teal); }
-    .wx-legend { display: none; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); }
+    .wx-legend { display: none; flex-direction: column; gap: 3px; font-size: 9px; color: var(--muted); }
     .wx-legend.show { display: flex; }
-    .wx-grad { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg,#4575b4,#74add1,#fee090,#f46d43,#d73027); }
+    .wx-leg-row { display: flex; align-items: center; gap: 5px; }
+    .wx-leg-row > span:first-child { min-width: 52px; }
+    .wx-grad { flex: 1; height: 6px; border-radius: 3px; min-width: 60px; }
+    .wx-leg-src { font-size: 8px; opacity: .8; }
     .ls-tile {
       cursor: pointer; border-radius: 5px; overflow: hidden;
       border: 2px solid transparent; transition: border-color .15s;
@@ -576,6 +579,7 @@
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()" title="Zoek plaatsen/POI's langs de route">🔍 <span class="bl">Langs route</span></button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()" title="Race Flow: km-vs-tijd grafiek">📊 <span class="bl">Race Flow</span></button>
         <button class="ctrl-btn" id="btn-analyse" onclick="openAnalyse()" title="Analyse: dagboek per rijder, segment-splits, vergelijking met record, veldoverzicht">🔬 <span class="bl">Analyse</span></button>
+        <button class="ctrl-btn" id="btn-weer" onclick="openWxForecast()" title="Weer & forecast (Windy): geanimeerde wind, temperatuur, neerslag met tijdbalk tot ~10 dagen">🌦 <span class="bl">Weer</span></button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none" title="Uitslagen">🏆 <span class="bl">Resultaten</span></button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 <span class="bl">Routeklassement</span></button>
         <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 <span class="bl">Afstand tot punt</span></button>
@@ -768,6 +772,14 @@
   </div>
 </div>
 
+<div id="wx-modal" class="chart-modal" style="display:none" onclick="if(event.target===this)closeWxForecast()">
+  <div class="chart-inner" style="width:min(96vw,1000px);height:90vh">
+    <div class="chart-hdr"><span>🌦 Weer &amp; forecast</span><button class="chart-close" onclick="closeWxForecast()">✕</button></div>
+    <div style="flex:1;min-height:0"><iframe id="wx-frame" style="width:100%;height:100%;border:0;display:block" loading="lazy" allow="fullscreen"></iframe></div>
+    <div class="ana-sub" style="padding:6px 12px">Sleep de tijdbalk onderin voor de voorspelling (tot ~10 dagen vooruit). Wissel overlay (wind/temp/regen/wolken) links in Windy. Bron: Windy.com</div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
@@ -839,8 +851,9 @@ let activeTileLayers = [];
 // Weer-overlays (OpenWeatherMap via onze server-proxy). zIndex 350 = boven de basiskaart
 // maar onder de routelijn/rijders (overlayPane). Half-transparant zodat de route doorschijnt.
 const WX_OVERLAYS = {
-  wind:   { label: '🌬 Wind',     layer: 'wind_new' },
-  precip: { label: '🌧 Neerslag', layer: 'precipitation_new' },
+  temp:   { label: '🌡 Temp',     layer: 'temp_new',          grad: 'linear-gradient(90deg,#4575b4,#74add1,#abd9e9,#fee090,#f46d43,#d73027)', lo: 'koud', hi: 'warm' },
+  wind:   { label: '🌬 Wind',     layer: 'wind_new',          grad: 'linear-gradient(90deg,#4575b4,#74add1,#fee090,#f46d43,#d73027)',         lo: 'zwak', hi: 'hard' },
+  precip: { label: '🌧 Neerslag', layer: 'precipitation_new', grad: 'linear-gradient(90deg,#c8e6ff,#69a9ff,#2b6cff,#7b2bff)',                 lo: 'licht', hi: 'zwaar' },
 };
 const activeOverlays = {};   // id → L.tileLayer
 function toggleOverlay(id) {
@@ -853,8 +866,17 @@ function toggleOverlay(id) {
     }).addTo(map);
   }
   document.querySelectorAll('.ls-ov').forEach(el => el.classList.toggle('active', !!activeOverlays[el.dataset.ov]));
+  renderWxLegend();
+}
+function renderWxLegend() {
   const leg = document.getElementById('wx-legend');
-  if (leg) leg.classList.toggle('show', Object.keys(activeOverlays).length > 0);
+  if (!leg) return;
+  const act = Object.keys(activeOverlays);
+  if (!act.length) { leg.classList.remove('show'); leg.innerHTML = ''; return; }
+  leg.classList.add('show');
+  leg.innerHTML = act.map(id => { const d = WX_OVERLAYS[id];
+    return `<div class="wx-leg-row"><span>${d.label}</span><span>${d.lo}</span><div class="wx-grad" style="background:${d.grad}"></div><span>${d.hi}</span></div>`;
+  }).join('') + `<div class="wx-leg-src">weer © OpenWeather</div>`;
 }
 
 function setBaseLayer(id) {
@@ -905,10 +927,9 @@ function buildLayerSwitcher() {
         ${Object.entries(WX_OVERLAYS).map(([id, def]) => `
         <div class="ls-ov${activeOverlays[id] ? ' active' : ''}" data-ov="${id}" onclick="toggleOverlay('${id}')">${def.label}</div>`).join('')}
       </div>
-      <div id="wx-legend" class="wx-legend${Object.keys(activeOverlays).length ? ' show' : ''}">
-        <span>zwak</span><div class="wx-grad"></div><span>sterk</span> · weer © OpenWeather
-      </div>
+      <div id="wx-legend" class="wx-legend"></div>
     </div>`;
+  renderWxLegend();
   document.addEventListener('click', e => {
     if (!sw.contains(e.target)) closeLsPanel();
   }, { capture: true, passive: true });
@@ -3117,6 +3138,27 @@ async function openAnalyse() {
   anaRender();
 }
 function closeAnalyse() { document.getElementById('ana-modal').style.display = 'none'; }
+
+// Weer & forecast via Windy-embed (geanimeerde wind+richting, temp, regen, tijdbalk)
+function openWxForecast() {
+  let lat = 44, lon = -110, z = 6;   // standaard: Rockies
+  const lead = (allRiders.length ? allRiders : riders)
+    .filter(r => !r.scratched && r.latitude && (r.distanceOnTrack || 0) > 0)
+    .sort((a, b) => (b.distanceOnTrack || 0) - (a.distanceOnTrack || 0))[0];
+  if (lead && lead.latitude) { lat = lead.latitude; lon = lead.longitude; z = 7; }
+  const p = new URLSearchParams({
+    lat: lat.toFixed(3), lon: lon.toFixed(3), detailLat: lat.toFixed(3), detailLon: lon.toFixed(3),
+    zoom: z, level: 'surface', overlay: 'wind', product: 'ecmwf', menu: '', message: 'true',
+    marker: 'true', calendar: 'now', type: 'map', location: 'coordinates',
+    metricWind: 'km/h', metricTemp: '°C', radarRange: '-1',
+  });
+  document.getElementById('wx-frame').src = `https://embed.windy.com/embed2.html?${p}`;
+  document.getElementById('wx-modal').style.display = 'flex';
+}
+function closeWxForecast() {
+  document.getElementById('wx-modal').style.display = 'none';
+  document.getElementById('wx-frame').src = 'about:blank';   // stop de embed (data/animatie)
+}
 async function anaEnsureData() {
   const jobs = [];
   if (!riderHistoryCache) jobs.push(fetch(`${API}/api/fmc/${RC}/history`).then(r => r.ok ? r.json() : null).then(d => { if (d) riderHistoryCache = d; }).catch(()=>{}));
