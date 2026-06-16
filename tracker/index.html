@@ -803,6 +803,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-velocity@1.7.0/dist/leaflet-velocity.min.js"></script>
 <script>
 'use strict';
 const API      = 'https://tracker.klikschaak.nl';
@@ -989,12 +990,32 @@ const OV_ITEMS = [
   { id: 'helling',    icon: '⛰', label: 'Helling',          srcBtn: 'btn-helling', fn: toggleGradient, need: () => ovAvail.helling },
   { id: 'ondergrond', icon: '🛣', label: 'Ondergrond',       srcBtn: 'btn-surface', fn: toggleSurface,  need: () => ovAvail.ondergrond },
   { id: 'webcams',    icon: '📷', label: 'Webcams',          fn: toggleCams,        need: () => webcamsAvailable },
-  { id: 'forecast',   icon: '🌦', label: 'Forecast (Windy)', fn: openWxForecast, action: true },
+  { id: 'wind',       icon: '🌬', label: 'Wind (animatie)',  fn: toggleWind },
 ];
 function ovActive(it) {
   if (it.id === 'webcams') return !!camLayer;
+  if (it.id === 'wind') return !!windLayer;
   if (it.srcBtn) return !!document.getElementById(it.srcBtn)?.classList.contains('active');
   return false;
+}
+
+// Geanimeerde wind-overlay (leaflet-velocity) op onze eigen kaart — rijders blijven
+// zichtbaar (canvas onder de markerlaag). Bron: Open-Meteo windgrid via /api/wind.
+let windLayer = null;
+async function toggleWind() {
+  if (windLayer) { map.removeLayer(windLayer); windLayer = null; return; }
+  if (typeof L.velocityLayer !== 'function') { console.warn('leaflet-velocity niet geladen'); return; }
+  try {
+    const r = await fetch(`${API}/api/wind`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    windLayer = L.velocityLayer({
+      displayValues: true,
+      displayOptions: { velocityType: 'Wind', position: 'bottomleft', emptyString: 'Geen winddata',
+        angleConvention: 'bearingCW', speedUnit: 'k/h', displayPosition: 'bottomleft', displayEmptyString: 'Geen winddata' },
+      data, opacity: 0.85, maxVelocity: 22, velocityScale: 0.008,
+    }).addTo(map);
+  } catch(e) { console.error('Wind:', e); windLayer = null; }
 }
 function renderOverlaysPanel() {
   const p = document.getElementById('overlays-panel');
