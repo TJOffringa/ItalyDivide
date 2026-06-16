@@ -280,7 +280,19 @@
       border-radius: 8px; padding: 5px; gap: 5px;
       box-shadow: 0 4px 16px rgba(28,38,53,.22);
     }
-    #ls-panel.open { display: flex; }
+    #ls-panel.open { display: flex; flex-direction: column; }
+    .ls-tiles { display: flex; gap: 5px; }
+    .ls-ovs { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+    .ls-ov-lbl { font-size: 10px; color: var(--muted); }
+    .ls-ov {
+      cursor: pointer; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 5px;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--text); user-select: none;
+    }
+    .ls-ov:hover { border-color: var(--muted); }
+    .ls-ov.active { background: var(--teal); color: var(--cream); border-color: var(--teal); }
+    .wx-legend { display: none; align-items: center; gap: 5px; font-size: 9px; color: var(--muted); }
+    .wx-legend.show { display: flex; }
+    .wx-grad { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg,#4575b4,#74add1,#fee090,#f46d43,#d73027); }
     .ls-tile {
       cursor: pointer; border-radius: 5px; overflow: hidden;
       border: 2px solid transparent; transition: border-color .15s;
@@ -824,6 +836,27 @@ const BASE_LAYERS = {
 let activeBaseId = 'osm';
 let activeTileLayers = [];
 
+// Weer-overlays (OpenWeatherMap via onze server-proxy). zIndex 350 = boven de basiskaart
+// maar onder de routelijn/rijders (overlayPane). Half-transparant zodat de route doorschijnt.
+const WX_OVERLAYS = {
+  wind:   { label: '🌬 Wind',     layer: 'wind_new' },
+  precip: { label: '🌧 Neerslag', layer: 'precipitation_new' },
+};
+const activeOverlays = {};   // id → L.tileLayer
+function toggleOverlay(id) {
+  const def = WX_OVERLAYS[id];
+  if (activeOverlays[id]) {
+    map.removeLayer(activeOverlays[id]); delete activeOverlays[id];
+  } else {
+    activeOverlays[id] = L.tileLayer(`${API}/api/wx/${def.layer}/{z}/{x}/{y}`, {
+      opacity: 0.6, maxZoom: 19, zIndex: 350, attribution: '© OpenWeather',
+    }).addTo(map);
+  }
+  document.querySelectorAll('.ls-ov').forEach(el => el.classList.toggle('active', !!activeOverlays[el.dataset.ov]));
+  const leg = document.getElementById('wx-legend');
+  if (leg) leg.classList.toggle('show', Object.keys(activeOverlays).length > 0);
+}
+
 function setBaseLayer(id) {
   activeTileLayers.forEach(l => l.remove());
   activeTileLayers = [];
@@ -860,11 +893,21 @@ function buildLayerSwitcher() {
       <span class="ls-chevron">▲</span>
     </div>
     <div id="ls-panel">
-      ${Object.entries(BASE_LAYERS).map(([id, def]) => `
+      <div class="ls-tiles">
+        ${Object.entries(BASE_LAYERS).map(([id, def]) => `
         <div class="ls-tile${id === activeBaseId ? ' active' : ''}" data-id="${id}" onclick="setBaseLayer('${id}')" title="${def.label}">
           <img src="${def.thumb}" alt="${def.label}" loading="lazy">
           <span>${def.label}</span>
         </div>`).join('')}
+      </div>
+      <div class="ls-ovs">
+        <span class="ls-ov-lbl">Overlay</span>
+        ${Object.entries(WX_OVERLAYS).map(([id, def]) => `
+        <div class="ls-ov${activeOverlays[id] ? ' active' : ''}" data-ov="${id}" onclick="toggleOverlay('${id}')">${def.label}</div>`).join('')}
+      </div>
+      <div id="wx-legend" class="wx-legend${Object.keys(activeOverlays).length ? ' show' : ''}">
+        <span>zwak</span><div class="wx-grad"></div><span>sterk</span> · weer © OpenWeather
+      </div>
     </div>`;
   document.addEventListener('click', e => {
     if (!sw.contains(e.target)) closeLsPanel();
