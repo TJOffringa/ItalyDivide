@@ -212,15 +212,22 @@
     /* ── Map ── */
     #map { flex: 1; min-width: 0; position: relative; }
     .leaflet-container { background: #e8eef0; }
-    /* Zoomknoppen iets omhoog zodat refresh-bar eronder past */
-    .leaflet-bottom.leaflet-right { bottom: 36px; }
+    /* Rechtsonder-stapel (onder→boven): OSM-credit, aftelklok, zoomknoppen */
+    .leaflet-bottom.leaflet-right { bottom: 48px; }
 
     #refresh-bar {
-      position: absolute; bottom: 10px; right: 10px; z-index: 800;
+      position: absolute; bottom: 22px; right: 10px; z-index: 800;
       background: rgba(255,255,255,.9); border: 1px solid var(--border);
       border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted);
       pointer-events: none;
     }
+    #osm-credit {
+      position: absolute; bottom: 0; right: 0; z-index: 700;
+      background: rgba(255,255,255,.6); padding: 0 5px; font-size: 10px;
+      color: #555; line-height: 16px; border-radius: 3px 0 0 0;
+    }
+    #osm-credit a { color: #555; text-decoration: none; }
+    #osm-credit a:hover { text-decoration: underline; }
     .stop-icon { white-space: nowrap; }
     .stop-icon .stop-dot { position: absolute; left: 0; top: 0; width: 13px; height: 13px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(28,38,53,.45); }
     .stop-icon .stop-box { display: inline-block; margin-left: 17px; background: #fff; border: 2px solid; border-radius: 4px; padding: 3px 7px; font-size: 11px; font-weight: 700; line-height: 16px; box-shadow: 0 2px 6px rgba(28,38,53,.3); }
@@ -709,6 +716,7 @@
       </div>
       <div id="fc-legend" style="display:none"></div>
       <div id="refresh-bar">↺ —</div>
+      <div id="osm-credit"></div>
       <button id="map-fs-close" onclick="toggleFullscreen()" title="Sluiten (Esc)" style="display:none">✕</button>
       <div id="race-clock" style="display:none">
         <div class="rc-timer" id="rc-timer">—</div>
@@ -953,6 +961,7 @@ function setBaseLayer(id) {
   map.setMaxZoom(layerMax);
   if (map.getZoom() > layerMax) map.setZoom(layerMax);
   activeBaseId = id;
+  updateMapCredit();
   document.querySelectorAll('.ls-tile').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   // Toggle-knop bijwerken
   const tog = document.getElementById('ls-toggle');
@@ -961,6 +970,17 @@ function setBaseLayer(id) {
     tog.querySelector('.ls-name').textContent = def.label;
   }
   closeLsPanel();
+}
+
+// Eigen kaart-credit rechtsonder (Leaflet's eigen attributie is uit → geen 'Leaflet'-link).
+// Toont de attributie van de actieve basiskaart + Open-Meteo als er een weerlaag aan staat.
+function updateMapCredit() {
+  const el = document.getElementById('osm-credit');
+  if (!el) return;
+  const parts = [...new Set((BASE_LAYERS[activeBaseId]?.layers || []).map(l => l.attr).filter(Boolean))];
+  if (typeof fcOverlays === 'object' && Object.keys(fcOverlays).length)
+    parts.push('weer © <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>');
+  el.innerHTML = parts.join(' · ');
 }
 
 function buildLayerSwitcher() {
@@ -1043,6 +1063,7 @@ async function fcEnsureMeta() {
   return false;
 }
 function fcSliderSync() {
+  updateMapCredit();
   const slider = document.getElementById('wind-slider');
   if (!slider) return;
   if (!Object.keys(fcOverlays).length) { slider.style.display = 'none'; fcRenderLegend(); return; }
@@ -1173,7 +1194,7 @@ function toggleOverlaysPanel(e) {
 
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([48, 10], 5);
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView([48, 10], 5);
   map.createPane('wxPane');                       // weerlagen tussen basiskaart en route/rijders
   map.getPane('wxPane').style.zIndex = 250;
   map.getPane('wxPane').style.pointerEvents = 'none';
