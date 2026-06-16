@@ -107,6 +107,25 @@
     .ctrl-btn.active { background: var(--teal); color: var(--cream); border-color: var(--teal); font-weight: 600; }
     .ctrl-btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
     .ctrl-btn.ctrl-icon { flex: 0 0 auto; }   /* compacte icoon-knop (bv. ♀ naast Leider), rekt niet uit */
+    .ctrl-btn.ov-src { display: none !important; }   /* bronknoppen verborgen; bediend via Overlays-paneel */
+    /* ── Overlays-paneel ── */
+    #overlays-panel {
+      padding: 6px 12px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .ov-row {
+      display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+      padding: 6px 8px; border-radius: 6px; font-size: 12px; color: var(--text);
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+    .ov-row:hover { border-color: var(--muted); }
+    .ov-row.active { border-color: var(--teal); color: var(--teal); font-weight: 600; }
+    .ov-check {
+      width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--muted);
+      display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; color: #fff;
+    }
+    .ov-row.active .ov-check { background: var(--teal); border-color: var(--teal); }
+    .ov-row .ov-arrow { margin-left: auto; color: var(--muted); font-size: 11px; }
     /* Op mobiel: labels behouden maar compacter, en knoppen rekken uit om elke rij
        volledig te vullen (geen ragged ruimte) zodat er meer per rij passen en het
        klassement niet onder de vouw verdwijnt. */
@@ -579,7 +598,6 @@
         <button class="ctrl-btn" id="btn-poi" onclick="togglePoi()" title="Zoek plaatsen/POI's langs de route">🔍 <span class="bl">Langs route</span></button>
         <button class="ctrl-btn" id="btn-raceflow" onclick="openRaceFlow()" title="Race Flow: km-vs-tijd grafiek">📊 <span class="bl">Race Flow</span></button>
         <button class="ctrl-btn" id="btn-analyse" onclick="openAnalyse()" title="Analyse: dagboek per rijder, segment-splits, vergelijking met record, veldoverzicht">🔬 <span class="bl">Analyse</span></button>
-        <button class="ctrl-btn" id="btn-weer" onclick="openWxForecast()" title="Forecast (Windy): geanimeerde wind, temperatuur, neerslag met tijdbalk tot ~10 dagen. Apart model dan de 'Weer nu'-overlay op de kaart.">🌦 <span class="bl">Forecast</span></button>
         <button class="ctrl-btn" id="btn-results" onclick="openResults()" style="display:none" title="Uitslagen">🏆 <span class="bl">Resultaten</span></button>
         <button class="ctrl-btn" id="btn-route-rank" onclick="toggleRouteRanking('doortijden')" title="Klik op een punt op de route → klassement (doortijden) op dat punt">🏁 <span class="bl">Routeklassement</span></button>
         <button class="ctrl-btn" id="btn-route-dist" onclick="toggleRouteRanking('afstand')" title="Klik op een punt op de route → afstand van rijders tot dat punt">📏 <span class="bl">Afstand tot punt</span></button>
@@ -587,12 +605,16 @@
         <button class="ctrl-btn ctrl-icon" id="btn-leader-w" onclick="flyToLeader('F')" title="Vlieg naar de leidster (vrouwen)" style="display:none">♀</button>
         <button class="ctrl-btn" id="btn-fullscreen" onclick="toggleFullscreen()" title="Kaart op volledig scherm">⛶ <span class="bl">Scherm</span></button>
         <button class="ctrl-btn" id="btn-lau" onclick="flyToLau()" title="Vlieg naar Laurens ten Dam" style="display:none">🇳🇱 <span class="bl">Lau</span></button>
-        <button class="ctrl-btn" id="btn-cams" onclick="toggleCams()" title="Toon geverifieerde webcams langs de route" style="display:none">📷 <span class="bl">Webcams</span></button>
         <button class="ctrl-btn active" id="btn-labels" onclick="toggleLabels()" title="Naamlabels aan/uit">🏷 <span class="bl">Labels</span></button>
-        <button class="ctrl-btn" id="btn-helling" onclick="toggleGradient()" title="Kleur route op hellingshoek" style="display:none">⛰ <span class="bl">Helling</span></button>
-        <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel" style="display:none">📈 <span class="bl">Hoogteprofiel</span></button>
-        <button class="ctrl-btn" id="btn-surface" onclick="toggleSurface()" title="Kleur route op ondergrond" style="display:none">🛣 <span class="bl">Ondergrond</span></button>
+        <button class="ctrl-btn" id="btn-overlays" onclick="toggleOverlaysPanel(event)" title="Overlays aan/uit: helling, ondergrond, webcams, forecast">🧩 <span class="bl">Overlays</span></button>
+        <button class="ctrl-btn" id="btn-profiel" onclick="openElevProfile()" title="Toon hoogteprofiel (apart scherm)">📈 <span class="bl">Hoogteprofiel</span></button>
+        <!-- bron-knoppen: verborgen, worden bediend via het Overlays-paneel -->
+        <button class="ctrl-btn ov-src" id="btn-weer" onclick="openWxForecast()">🌦 Forecast</button>
+        <button class="ctrl-btn ov-src" id="btn-cams" onclick="toggleCams()">📷 Webcams</button>
+        <button class="ctrl-btn ov-src" id="btn-helling" onclick="toggleGradient()">⛰ Helling</button>
+        <button class="ctrl-btn ov-src" id="btn-surface" onclick="toggleSurface()">🛣 Ondergrond</button>
       </div>
+      <div id="overlays-panel" style="display:none"></div>
 
       <!-- Route tabs (multi-afstand races) -->
       <div id="route-tabs" style="display:none"></div>
@@ -960,6 +982,47 @@ function closeLsPanel() {
   document.getElementById('ls-toggle')?.classList.remove('open');
 }
 
+// ── Overlays-paneel: helling, ondergrond, webcams en forecast onder één knop ──
+let webcamsAvailable = false;
+const ovAvail = { helling: false, ondergrond: false };   // gezet door checkOverlays() (HEAD-probe)
+const OV_ITEMS = [
+  { id: 'helling',    icon: '⛰', label: 'Helling',          srcBtn: 'btn-helling', fn: toggleGradient, need: () => ovAvail.helling },
+  { id: 'ondergrond', icon: '🛣', label: 'Ondergrond',       srcBtn: 'btn-surface', fn: toggleSurface,  need: () => ovAvail.ondergrond },
+  { id: 'webcams',    icon: '📷', label: 'Webcams',          fn: toggleCams,        need: () => webcamsAvailable },
+  { id: 'forecast',   icon: '🌦', label: 'Forecast (Windy)', fn: openWxForecast, action: true },
+];
+function ovActive(it) {
+  if (it.id === 'webcams') return !!camLayer;
+  if (it.srcBtn) return !!document.getElementById(it.srcBtn)?.classList.contains('active');
+  return false;
+}
+function renderOverlaysPanel() {
+  const p = document.getElementById('overlays-panel');
+  if (!p) return;
+  p.innerHTML = OV_ITEMS.filter(it => !it.need || it.need()).map(it => {
+    if (it.action) return `<div class="ov-row" onclick="ovClick('${it.id}')">${it.icon} ${it.label}<span class="ov-arrow">openen ↗</span></div>`;
+    const on = ovActive(it);
+    return `<div class="ov-row${on ? ' active' : ''}" onclick="ovClick('${it.id}')"><span class="ov-check">${on ? '✓' : ''}</span>${it.icon} ${it.label}</div>`;
+  }).join('');
+  updateOverlaysBtn();
+}
+async function ovClick(id) {
+  const it = OV_ITEMS.find(x => x.id === id);
+  if (it) { await it.fn(); renderOverlaysPanel(); }
+}
+function updateOverlaysBtn() {
+  const any = OV_ITEMS.some(it => !it.action && ovActive(it));
+  document.getElementById('btn-overlays')?.classList.toggle('active', any);
+}
+function toggleOverlaysPanel(e) {
+  if (e) e.stopPropagation();
+  const p = document.getElementById('overlays-panel');
+  if (!p) return;
+  const open = (p.style.display === 'none' || !p.style.display);
+  if (open) renderOverlaysPanel();
+  p.style.display = open ? 'flex' : 'none';
+}
+
 // ── Map ────────────────────────────────────────────────────────────────
 function initMap() {
   map = L.map('map', { zoomControl: false }).setView([48, 10], 5);
@@ -1286,10 +1349,8 @@ function clearOverlay() {
   routeSetStyle({ opacity: .85 });
   document.getElementById('btn-helling').classList.remove('active');
   document.getElementById('btn-surface').classList.remove('active');
-  // Hoogteprofiel-knop hoort bij de helling-overlay → verbergen en popup sluiten
-  document.getElementById('btn-profiel').style.display = 'none';
-  closeElevProfile();
   hideLegend();
+  if (typeof renderOverlaysPanel === 'function') renderOverlaysPanel();
 }
 
 let gradientPts = null;
@@ -1758,7 +1819,7 @@ async function checkWebcams() {
     const r = await fetch(`${API}/api/webcams/curated?race=${RC}`);
     if (!r.ok) return;
     const j = await r.json();
-    if (j.webcams && j.webcams.length) document.getElementById('btn-cams').style.display = '';
+    if (j.webcams && j.webcams.length) { webcamsAvailable = true; renderOverlaysPanel(); }
   } catch(e) {}
 }
 async function toggleCams() {
@@ -2140,14 +2201,14 @@ async function checkResults() {
 // Toon helling/ondergrond-knoppen alleen als de data voor deze race bestaat
 async function checkOverlays() {
   if (!SLUG) return;
-  const probe = async (file, btnId) => {
+  const probe = async (file, flag) => {
     try {
       const r = await fetch(`${API}/${SLUG}/${file}`, { method: 'HEAD' });
-      if (r.ok) document.getElementById(btnId).style.display = '';
+      if (r.ok) { ovAvail[flag] = true; renderOverlaysPanel(); }
     } catch(e) {}
   };
-  probe('route-gradient.json', 'btn-helling');
-  probe('route-surface.json',  'btn-surface');
+  probe('route-gradient.json', 'helling');
+  probe('route-surface.json',  'ondergrond');
 }
 
 // ── Race Flow ──────────────────────────────────────────────────────────
