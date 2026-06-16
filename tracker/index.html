@@ -2156,6 +2156,20 @@ function drawStopMarkers(stops) {
   return stops.map(s => L.marker([s.lat, s.lon], { icon: makeStopIcon(s) }).addTo(map).bindPopup(() => stopPopupHtml(s)));
 }
 
+// Echte stop-positie uit de GPS-track: mediaan van de GPS-punten binnen het stop-venster,
+// MITS die dicht bij elkaar liggen (rijder stond echt stil). Ligt de spreiding hoog, dan
+// bewoog de rijder daar (bv. tlflow-schijnstop in een GPS-gat) → geen anker (null).
+function gpsStopAnchor(pts, t0, t1) {
+  const inw = pts.filter(p => p[2] && p[2] >= t0 && p[2] <= t1);
+  if (!inw.length) return null;
+  const lats = inw.map(p => p[0]).sort((a, b) => a - b);
+  const lons = inw.map(p => p[1]).sort((a, b) => a - b);
+  const mlat = lats[lats.length >> 1], mlon = lons[lons.length >> 1];
+  let maxd = 0;
+  for (const p of inw) { const d = hav([p[0], p[1]], [mlat, mlon]); if (d > maxd) maxd = d; }
+  return maxd <= 3 ? [mlat, mlon] : null;   // > 3 km spreiding = bewoog → geen betrouwbaar anker
+}
+
 async function toggleTrack(id) {
   if (riderTracks[id]) {
     riderTracks[id].hourMarkers.forEach(m => m.remove());
@@ -2181,6 +2195,14 @@ async function toggleTrack(id) {
           stops = extractStopsFromTrack(tlTrack, cur, Date.now(), stopMin);
         } else {
           stops = extractStopsFromTrack(pts, cur, Date.now(), stopMin);
+        }
+        // Anker élke historische stop op de werkelijke GPS-positie in dat tijdvenster (net als de
+        // uur-labels). De leider-stops komen van tlflow-km → routePointAtKm en stonden daardoor
+        // een paar km te zuidelijk; met GPS-anker staan ze tussen de juiste uur-labels.
+        for (const s of stops) {
+          if (s.ongoing) continue;
+          const gp = gpsStopAnchor(pts, s.startMs, s.startMs + s.durationMs);
+          if (gp) { s.lat = gp[0]; s.lon = gp[1]; }
         }
         // De lopende stop op de WERKELIJKE GPS-positie (= het bolletje) zetten. De raceflow-km
         // kan vóór/achter de GPS-positie liggen; voor leiders staat de huidige rust daardoor soms
