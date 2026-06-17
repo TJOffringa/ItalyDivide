@@ -1183,15 +1183,17 @@ function fcRenderLegend() {
 // Grizzly-overlay: GBIF-waarnemingen ≤2 km van de route, met een berenmarker
 // Beren-overlays per soort (GBIF, ≤2 km van de route)
 const BEAR_DEFS = {
-  brown: { label: 'Bruine beer', emoji: '🐻',   ring: '#8a5a2b', photo: true  },   // grizzly
-  black: { label: 'Zwarte beer', emoji: '🐻',   ring: '#1c2635', photo: false },
-  polar: { label: 'IJsbeer',     emoji: '🐻‍❄️', ring: '#7db4d8', photo: false },
+  brown: { label: 'Bruine beer', emoji: '🐻',   ring: '#8a5a2b', photo: 'grizzly.jpg'  },   // grizzly
+  black: { label: 'Zwarte beer', emoji: '🐻',   ring: '#1c2635', photo: 'blackbear.png' },
+  polar: { label: 'IJsbeer',     emoji: '🐻‍❄️', ring: '#7db4d8', photo: null },
 };
 const bearLayers = {};   // species → L.layerGroup
-const grizzlyPhotoIcon = L.divIcon({ className: 'grizzly-icon', html: '<div class="grizzly-photo"><img src="grizzly.jpg" alt="Grizzly"></div>', iconSize: [46, 46], iconAnchor: [23, 23], popupAnchor: [0, -24] });
 const GRIZZLY_RECENT_MS = 90 * 86400000;
 function bearIcon(emoji, ring) {
   return L.divIcon({ className: 'grizzly-icon', html: `<div class="grizzly-badge" style="border-color:${ring}">${emoji}</div>`, iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14] });
+}
+function bearPhotoIcon(src) {   // recente waarneming: echte foto, groter, gouden ring
+  return L.divIcon({ className: 'grizzly-icon', html: `<div class="grizzly-photo"><img src="${src}" alt="beer"></div>`, iconSize: [46, 46], iconAnchor: [23, 23], popupAnchor: [0, -24] });
 }
 async function toggleBear(species) {
   if (bearLayers[species]) { map.removeLayer(bearLayers[species]); delete bearLayers[species]; return; }
@@ -1203,9 +1205,9 @@ async function toggleBear(species) {
     const lg = L.layerGroup(), icon = bearIcon(def.emoji, def.ring);
     pts.forEach(p => {
       const recent = def.photo && p.ts && (Date.now() - p.ts) <= GRIZZLY_RECENT_MS;
-      L.marker([p.lat, p.lon], { icon: recent ? grizzlyPhotoIcon : icon, zIndexOffset: recent ? 700 : 0 })
+      L.marker([p.lat, p.lon], { icon: recent ? bearPhotoIcon(def.photo) : icon, zIndexOffset: recent ? 700 : 0 })
         .bindPopup(`<div class="pu-name">${def.emoji} ${def.label} gezien${p.year ? ' · ' + p.year : ''}${recent ? ' · <span style="color:#b45309">recent!</span>' : ''}</div>
-          ${recent ? '<img src="grizzly.jpg" alt="Grizzly" style="width:100%;border-radius:6px;margin:4px 0">' : ''}
+          ${recent ? `<img src="${def.photo}" alt="${def.label}" style="width:100%;border-radius:6px;margin:4px 0">` : ''}
           <div class="pu-meta">📍 ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)} · ≤2 km van de route</div>
           <a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}" target="_blank" rel="noopener" class="pu-gmaps">🗺 Bekijk op Google Maps</a>
           <div class="pu-meta" style="margin-top:4px">bron: GBIF / iNaturalist</div>`)
