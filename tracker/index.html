@@ -2972,6 +2972,13 @@ function fmtDur(ms) {
   return `${m}m`;
 }
 
+function fmtAgo(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 2) return 'zojuist';
+  if (m < 60) return `${m} min geleden`;
+  const h = Math.floor(m / 60);
+  return `${h}u ${String(m % 60).padStart(2, '0')}m geleden`;
+}
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
   const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
@@ -2983,10 +2990,15 @@ function popupHtml(rd) {
   const st       = rd._mstats;
   // Alleen de totale gemiddelde snelheid (afstand ÷ racetijd) — robuust. Bewegingstijd en
   // "tijdens fietsen" zijn weggelaten omdat stop-detectie met deze bron onbetrouwbaar is.
-  const statsHtml = st ? `
+  const lastSeenRow = rd.lastFixTs ? (() => {
+    const age = Date.now() - rd.lastFixTs, stale = age > 30 * 60000;
+    return `<div class="pu-stat"><span>🛰 Laatst gezien</span><b style="${stale ? 'color:#b45309' : ''}">${fmtAgo(age)}</b></div>`;
+  })() : '';
+  const statsHtml = (st || lastSeenRow) ? `
     <div class="pu-stats">
-      <div class="pu-stat"><span>🚴 Gem. snelheid</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>
-      ${st.currentKmh != null ? `<div class="pu-stat"><span>⚡ Actuele snelheid</span><b>${st.currentKmh.toFixed(1)} km/u</b></div>` : ''}
+      ${st ? `<div class="pu-stat"><span>🚴 Gem. snelheid</span><b>${st.avgOverallKmh.toFixed(1)} km/u</b></div>` : ''}
+      ${st && st.currentKmh != null ? `<div class="pu-stat"><span>⚡ Actuele snelheid</span><b>${st.currentKmh.toFixed(1)} km/u</b></div>` : ''}
+      ${lastSeenRow}
     </div>` : '';
   const gmaps = (rd.latitude && rd.longitude)
     ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
