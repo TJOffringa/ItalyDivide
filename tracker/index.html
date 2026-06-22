@@ -251,6 +251,8 @@
     .ghost-icon .ghost-lbl { position: absolute; left: 19px; top: -2px; font-size: 11px; font-weight: 700; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
     .route-div-lbl { background: none; border: none; }
     .route-div-lbl .route-div-pill { display: inline-block; transform: translate(-50%, -50%); color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap; padding: 2px 6px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.35); opacity: .92; }
+    .lau-bonus-lbl { background: none; border: none; }
+    .lau-bonus-lbl .lau-bonus-pill { display: inline-block; transform: translate(-50%, -50%); background: #ff8c00; color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap; padding: 2px 7px; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
     .cam-marker { font-size: 18px; line-height: 26px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.4); background: #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
     .cam-pop .cam-pop-t { font-weight: 700; font-size: 13px; }
     .cam-pop .cam-pop-l { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
@@ -3420,6 +3422,25 @@ async function drawRouteDivergences() {
   }
 }
 
+// Lau's "extra lusje": het route-stuk dat hij uitreed én weer terugreed (~21 bonus-km),
+// km 2432–2446 in Noord-Colorado. In het oranje gekleurd, met een knipoog-label.
+let lauBonusLayer = null;
+function drawLauBonus() {
+  if (RC !== 'tourdivide26' || !routePts.length || !routeCum.length) return;
+  if (lauBonusLayer) lauBonusLayer.remove();
+  const FROM = 2432, TO = 2446, pts = [];
+  for (let i = 0; i < routePts.length; i++) if (routeCum[i] >= FROM && routeCum[i] <= TO) pts.push(routePts[i]);
+  if (pts.length < 2) return;
+  lauBonusLayer = L.layerGroup().addTo(map);
+  L.polyline(pts, { color: '#ff8c00', weight: 7, opacity: .9, lineJoin: 'round', lineCap: 'round', interactive: false }).addTo(lauBonusLayer);
+  const mid = pts[Math.floor(pts.length / 2)];
+  L.marker(mid, { interactive: false, icon: L.divIcon({
+    className: 'lau-bonus-lbl',
+    html: `<span class="lau-bonus-pill">🔁 Lau's extra lusje · +21&nbsp;km 🍩</span>`,
+    iconSize: [0, 0],
+  }) }).addTo(lauBonusLayer);
+}
+
 // ════════════════════════ Analyse-scherm ════════════════════════════════
 let anaSection = 'dagboek';
 let anaRiderId = null;            // gekozen rijder (deviceId als string)
@@ -3873,7 +3894,7 @@ async function init() {
   checkResults();
   checkOverlays();
   startRaceClock();
-  loadRoute().then(() => { loadGhosts(); drawRouteDivergences(); });
+  loadRoute().then(() => { loadGhosts(); drawRouteDivergences(); drawLauBonus(); });
   loadPositions().then(startCountdown);
 }
 init();
