@@ -2223,14 +2223,27 @@ function drawStopMarkers(stops) {
 // MITS die dicht bij elkaar liggen (rijder stond echt stil). Ligt de spreiding hoog, dan
 // bewoog de rijder daar (bv. tlflow-schijnstop in een GPS-gat) → geen anker (null).
 function gpsStopAnchor(pts, t0, t1) {
+  // 1) GPS-punten binnen het stop-venster, geclusterd → mediaan (betrouwbaarst).
   const inw = pts.filter(p => p[2] && p[2] >= t0 && p[2] <= t1);
-  if (!inw.length) return null;
-  const lats = inw.map(p => p[0]).sort((a, b) => a - b);
-  const lons = inw.map(p => p[1]).sort((a, b) => a - b);
-  const mlat = lats[lats.length >> 1], mlon = lons[lons.length >> 1];
-  let maxd = 0;
-  for (const p of inw) { const d = hav([p[0], p[1]], [mlat, mlon]); if (d > maxd) maxd = d; }
-  return maxd <= 3 ? [mlat, mlon] : null;   // > 3 km spreiding = bewoog → geen betrouwbaar anker
+  if (inw.length) {
+    const lats = inw.map(p => p[0]).sort((a, b) => a - b);
+    const lons = inw.map(p => p[1]).sort((a, b) => a - b);
+    const mlat = lats[lats.length >> 1], mlon = lons[lons.length >> 1];
+    let maxd = 0;
+    for (const p of inw) { const d = hav([p[0], p[1]], [mlat, mlon]); if (d > maxd) maxd = d; }
+    if (maxd <= 3) return [mlat, mlon];
+  }
+  // 2) Geen/verspreide GPS in het venster (sparse overnacht-stop: tracker pingt amper tijdens
+  //    stilstand) → pak de GPS-fix het dichtst bij het venster (binnen 2u). De rijder kwam daar
+  //    aan / vertrok daar, dus ~de stopplek. Voorkomt terugval op de (door terugrijden opgeblazen)
+  //    tlflow-km-positie, die een eind verderop de route ligt.
+  let best = null, bd = Infinity;
+  for (const p of pts) {
+    if (!p[2]) continue;
+    const d = p[2] < t0 ? t0 - p[2] : (p[2] > t1 ? p[2] - t1 : 0);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return (best && bd <= 120 * 60000) ? [best[0], best[1]] : null;
 }
 
 async function toggleTrack(id) {
