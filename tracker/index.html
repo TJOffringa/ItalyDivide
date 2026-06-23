@@ -3180,12 +3180,16 @@ function setViewLeaderLow(latlng, zoom) {
 // ── Record-ghosts (historische winnaars, op hun werkelijke tempo) ────────
 let ghostData = null;
 const ghostMarkers = {};
-let route2024 = null;   // [[lat,lon,cumKm],...] — voor de 2024-ghosts (route week af van 2026)
+// Jaar-specifieke routes [[lat,lon,cumKm],...] — ghosts volgen de route van hún jaar
+// (2024 en 2025 weken af van 2026). Andere jaren volgen de route van dit jaar.
+let route2024 = null, route2025 = null;
+const yearRoutes = {};   // jaar → [[lat,lon,cumKm],...]
 const ghostYearTotal = {};  // jaar → max km in de ghost-data (≈ officiële routelengte dat jaar)
 async function loadGhosts() {
   if (!SLUG) return;
   try { const r = await fetch(`${API}/${SLUG}/ghosts.json`); if (r.ok) ghostData = await r.json(); } catch(e) {}
-  try { const r = await fetch(`${API}/${SLUG}/route2024.json`); if (r.ok) route2024 = await r.json(); } catch(e) {}
+  try { const r = await fetch(`${API}/${SLUG}/route2024.json`); if (r.ok) { route2024 = await r.json(); yearRoutes[2024] = route2024; } } catch(e) {}
+  try { const r = await fetch(`${API}/${SLUG}/route2025.json`); if (r.ok) { route2025 = await r.json(); yearRoutes[2025] = route2025; } } catch(e) {}
   for (const g of ghostData || []) {
     if (g.points && g.points.length) {
       const t = g.points[g.points.length - 1][1];
@@ -3194,27 +3198,28 @@ async function loadGhosts() {
   }
   updateGhosts();
 }
-function route2024PointAtKm(km) {
-  if (!route2024 || route2024.length < 2) return null;
-  const total = route2024[route2024.length-1][2];
-  if (km <= 0) return [route2024[0][0], route2024[0][1]];
-  if (km >= total) return [route2024[route2024.length-1][0], route2024[route2024.length-1][1]];
-  let lo = 0, hi = route2024.length - 1;
-  while (lo < hi) { const mid = (lo+hi)>>1; if (route2024[mid][2] < km) lo = mid+1; else hi = mid; }
-  const i = Math.max(1, lo), a = route2024[i-1], b = route2024[i];
+// positie op een jaar-route (cumKm-array) bij km
+function yearRoutePointAtKm(arr, km) {
+  if (!arr || arr.length < 2) return null;
+  const total = arr[arr.length-1][2];
+  if (km <= 0) return [arr[0][0], arr[0][1]];
+  if (km >= total) return [arr[arr.length-1][0], arr[arr.length-1][1]];
+  let lo = 0, hi = arr.length - 1;
+  while (lo < hi) { const mid = (lo+hi)>>1; if (arr[mid][2] < km) lo = mid+1; else hi = mid; }
+  const i = Math.max(1, lo), a = arr[i-1], b = arr[i];
   const f = (km - a[2]) / ((b[2]-a[2])||1);
   return [a[0]+f*(b[0]-a[0]), a[1]+f*(b[1]-a[1])];
 }
-// 2024-ghosts volgen de 2024-route; overige (2025) de route van dit jaar.
+function route2024PointAtKm(km) { return yearRoutePointAtKm(route2024, km); }   // behouden voor stops
 // De ghost-km loopt op trackleaders' afstandsschaal, die iets afwijkt van de lengte van
 // onze (gesamplede) polyline → proportioneel schalen, anders schuift de positie verderop.
 function ghostPointAtKm(g, km) {
-  const use2024 = g.year === 2024 && route2024;
-  const total = use2024 ? route2024[route2024.length - 1][2] : (routeCum[routeCum.length - 1] || 0);
+  const yr = yearRoutes[g.year];   // 2024 of 2025 → eigen route; anders dit jaar
+  const total = yr ? yr[yr.length - 1][2] : (routeCum[routeCum.length - 1] || 0);
   const gtot = ghostYearTotal[g.year] || 0;
   let scale = (gtot > 0 && total > 0) ? total / gtot : 1;
   if (scale < 0.9 || scale > 1.1) scale = 1;   // alleen kleine sampling-correctie, geen rare sprongen
-  return use2024 ? route2024PointAtKm(km * scale) : routePointAtKm(km * scale);
+  return yr ? yearRoutePointAtKm(yr, km * scale) : routePointAtKm(km * scale);
 }
 function ghostKmAt(pts, hrs) {              // interpoleer km op verstreken uren; null = al gefinisht
   if (!pts || !pts.length) return null;
