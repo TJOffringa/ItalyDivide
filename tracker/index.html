@@ -1379,11 +1379,37 @@ async function loadRoute() {
 }
 
 // ── Positions ──────────────────────────────────────────────────────────
+// Handmatig gemarkeerde finishers (de officiële results-API is leeg): naam → {rank,winner,time}.
+// Hun dot wordt naar de finish gesnapt en als gefinisht/gewonnen getoond.
+let finishersMap = {};
+async function loadFinishers() {
+  if (!SLUG) return;
+  try {
+    const r = await fetch(`${API}/${SLUG}/finishers.json`);
+    if (!r.ok) return;
+    const list = await r.json();
+    finishersMap = {};
+    for (const f of list) if (f.name) finishersMap[f.name.toLowerCase().trim()] = f;
+    if (allRiders.length) { applyFinishers(allRiders); renderMarkers(); renderList(); }
+  } catch(e) {}
+}
+function applyFinishers(list) {
+  if (!Object.keys(finishersMap).length) return;
+  const fin = routePts.length ? routePts[routePts.length - 1] : null;
+  for (const rd of list) {
+    const f = finishersMap[(rd.name || '').toLowerCase().trim()];
+    if (!f) continue;
+    rd._finisher = f;
+    if (fin && isFinite(finishKm)) { rd.latitude = fin[0]; rd.longitude = fin[1]; rd.distanceOnTrack = finishKm; }   // dot op de finish
+  }
+}
+
 async function loadPositions() {
   try {
     const r = await fetch(`${API}/api/fmc/${RC}/positions?_=${Date.now()}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     allRiders = await r.json();
+    applyFinishers(allRiders);
     // Tab-filter toepassen indien van toepassing, anders alle riders tonen
     const tabs = raceConfig?.tabs;
     if (tabs?.length) {
@@ -1447,19 +1473,21 @@ function renderMarkers() {
     const color   = rd.riderColor || '#888';
     const opacity = rd.scratched ? 0.3 : 0.9;
 
+    const trophy = rd._finisher?.winner ? ' 🏆' : '';
+    const label  = `<span class="rl-inner">${rd.name.split(' ')[0]}${trophy}</span>`;
     if (markerMap[id]) {
       markerMap[id]
         .setLatLng([rd.latitude, rd.longitude])
         .setStyle({ color, fillColor: color, opacity, fillOpacity: opacity });
+      if (markerMap[id].getTooltip()) markerMap[id].setTooltipContent(label);   // bv. trofee bij finish
     } else {
-      const firstName = rd.name.split(' ')[0];
       const m = L.circleMarker([rd.latitude, rd.longitude], {
         radius: rd.scratched ? 4 : 6, color, fillColor: color,
         fillOpacity: opacity, opacity, weight: 1.5
       }).addTo(map).bindPopup(() => popupHtml(riders.find(r => String(r.deviceId) === id) || rd));
 
       if (!rd.scratched) {
-        m.bindTooltip(`<span class="rl-inner">${firstName}</span>`, {
+        m.bindTooltip(label, {
           permanent: true, direction: 'right', offset: [7, 0],
           className: 'rider-label', opacity: 1
         });
@@ -2996,8 +3024,11 @@ function fmtAgo(ms) {
 }
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
+  const fin      = rd._finisher;
   const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
   const status   = rd.scratched  ? '<span style="color:#b90a0a">DNF</span>'
+    : fin && fin.winner          ? '<span style="color:#d4a017;font-weight:700">🏆 Gewonnen!</span>'
+    : fin                        ? `<span style="color:var(--green)">✓ Gefinisht${fin.rank ? ' · #' + fin.rank : ''}</span>`
     : finished                   ? '<span style="color:var(--green)">✓ Gefinisht</span>'
                                  : '<span style="color:var(--green)">Rijdend</span>';
   const id       = String(rd.deviceId);
@@ -3019,8 +3050,9 @@ function popupHtml(rd) {
     ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
     : null;
   const btnStyle = 'margin-top:6px;width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;display:block;text-align:center;text-decoration:none;box-sizing:border-box';
-  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}</div>
+  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}${fin && fin.winner ? ' 🏆' : ''}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
+    ${fin && fin.time ? `<div class="pu-meta" style="margin-top:2px">🏁 Finishtijd: <b style="color:var(--text)">${fin.time}</b>${fin.winner ? ' · winnaar Tour Divide 2026' : ''}</div>` : ''}
     ${statsHtml}
     <button class="pu-track-btn${hasTrack ? ' active' : ''}" style="${btnStyle};background:var(--surface2);color:${hasTrack?'var(--green)':'var(--muted)'}" onclick="toggleTrack('${id}')">
       ${hasTrack ? '✕ Verberg gereden route' : '↗ Toon gereden route'}
@@ -3895,11 +3927,12 @@ async function init() {
   // Lau-knop alleen voor Tour Divide
   if (RC === 'tourdivide26') { document.getElementById('btn-lau').style.display = ''; }
   checkWebcams();
+  loadFinishers();
   initTabs();
   checkResults();
   checkOverlays();
   startRaceClock();
-  loadRoute().then(() => { loadGhosts(); drawRouteDivergences(); drawLauBonus(); });
+  loadRoute().then(() => { loadGhosts(); drawRouteDivergences(); drawLauBonus(); if (allRiders.length) { applyFinishers(allRiders); renderMarkers(); renderList(); } });
   loadPositions().then(startCountdown);
 }
 init();
