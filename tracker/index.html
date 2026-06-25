@@ -1395,13 +1395,39 @@ async function loadFinishers() {
 }
 function applyFinishers(list) {
   if (!Object.keys(finishersMap).length) return;
+  const key = rd => (rd.name || '').toLowerCase().trim();
   const fin = routePts.length ? routePts[routePts.length - 1] : null;
-  for (const rd of list) {
-    const f = finishersMap[(rd.name || '').toLowerCase().trim()];
-    if (!f) continue;
-    rd._finisher = f;
-    if (fin && isFinite(finishKm)) { rd.latitude = fin[0]; rd.longitude = fin[1]; rd.distanceOnTrack = finishKm; }   // dot op de finish
+  // Finishers op rang sorteren en NAAST elkaar bij de finish plaatsen (anders overlappen
+  // de dots en zie je alleen de bovenste).
+  const finers = list.filter(rd => finishersMap[key(rd)])
+    .sort((a, b) => (finishersMap[key(a)].rank || 99) - (finishersMap[key(b)].rank || 99));
+  finers.forEach((rd, i) => {
+    rd._finisher = finishersMap[key(rd)];
+    if (fin && isFinite(finishKm)) {
+      rd.distanceOnTrack = finishKm;
+      rd.latitude  = fin[0] + i * 0.0035;   // ~0.4 km per plaats noordwaarts → dots naast elkaar
+      rd.longitude = fin[1] + i * 0.0008;   // beetje schuin zodat labels niet overlappen
+    }
+  });
+}
+
+// Afstand (km) van een punt tot de route, met gedownsamplede route (snel, ~elke ~1,5 km).
+let _routeCoarse = null;
+function offRouteKm(lat, lon) {
+  if (!routePts.length) return 0;
+  if (!_routeCoarse || _routeCoarse.n !== routePts.length) {
+    const step = Math.max(1, Math.floor(routePts.length / 3000)), arr = [];
+    for (let i = 0; i < routePts.length; i += step) arr.push(routePts[i]);
+    _routeCoarse = { arr, n: routePts.length };
   }
+  let best = Infinity;
+  for (const q of _routeCoarse.arr) { const d = hav([lat, lon], q); if (d < best) best = d; }
+  return best;
+}
+// Rijders die niet meer racen: ver van de route (>12 km) en geen finisher → verbergen.
+function filterOffRoute(list) {
+  if (!routePts.length) return list;
+  return list.filter(rd => rd._finisher || !rd.latitude || offRouteKm(rd.latitude, rd.longitude) <= 12);
 }
 
 async function loadPositions() {
@@ -1410,6 +1436,7 @@ async function loadPositions() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     allRiders = await r.json();
     applyFinishers(allRiders);
+    allRiders = filterOffRoute(allRiders);   // niet-racende rijders ver van de route weglaten
     // Tab-filter toepassen indien van toepassing, anders alle riders tonen
     const tabs = raceConfig?.tabs;
     if (tabs?.length) {
@@ -1473,8 +1500,8 @@ function renderMarkers() {
     const color   = rd.riderColor || '#888';
     const opacity = rd.scratched ? 0.3 : 0.9;
 
-    const trophy = rd._finisher?.winner ? ' 🏆' : '';
-    const label  = `<span class="rl-inner">${rd.name.split(' ')[0]}${trophy}</span>`;
+    const medalTxt = rd._finisher ? ' ' + medal(rd._finisher.rank) : '';
+    const label  = `<span class="rl-inner">${rd.name.split(' ')[0]}${medalTxt}</span>`;
     if (markerMap[id]) {
       markerMap[id]
         .setLatLng([rd.latitude, rd.longitude])
@@ -3022,13 +3049,14 @@ function fmtAgo(ms) {
   const h = Math.floor(m / 60);
   return `${h}u ${String(m % 60).padStart(2, '0')}m geleden`;
 }
+function medal(rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🏅'; }
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
   const fin      = rd._finisher;
   const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
   const status   = rd.scratched  ? '<span style="color:#b90a0a">DNF</span>'
-    : fin && fin.winner          ? '<span style="color:#d4a017;font-weight:700">🏆 Gewonnen!</span>'
-    : fin                        ? `<span style="color:var(--green)">✓ Gefinisht${fin.rank ? ' · #' + fin.rank : ''}</span>`
+    : fin && fin.rank === 1      ? '<span style="color:#d4a017;font-weight:700">🥇 Gewonnen!</span>'
+    : fin                        ? `<span style="color:var(--green)">${medal(fin.rank)} Gefinisht · ${fin.rank}e plaats</span>`
     : finished                   ? '<span style="color:var(--green)">✓ Gefinisht</span>'
                                  : '<span style="color:var(--green)">Rijdend</span>';
   const id       = String(rd.deviceId);
@@ -3050,7 +3078,7 @@ function popupHtml(rd) {
     ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
     : null;
   const btnStyle = 'margin-top:6px;width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;display:block;text-align:center;text-decoration:none;box-sizing:border-box';
-  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}${fin && fin.winner ? ' 🏆' : ''}</div>
+  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}${fin ? ' ' + medal(fin.rank) : ''}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
     ${fin && fin.time ? `<div class="pu-meta" style="margin-top:2px">🏁 Finishtijd: <b style="color:var(--text)">${fin.time}</b>${fin.winner ? ' · winnaar Tour Divide 2026' : ''}</div>` : ''}
     ${statsHtml}
@@ -3132,6 +3160,10 @@ function renderList() {
     if (hist) for (const [km, ts] of hist) { if (km >= finishKm - 0.5) { finTs = ts; break; } }
     return { r, finTs };
   }).sort((a, b) => {
+    const ra = a.r._finisher?.rank, rb = b.r._finisher?.rank;   // officiële rang gaat vóór
+    if (ra && rb) return ra - rb;
+    if (ra) return -1;
+    if (rb) return 1;
     if (a.finTs && b.finTs) return a.finTs - b.finTs;
     if (a.finTs) return -1;
     if (b.finTs) return 1;
@@ -3148,8 +3180,12 @@ function renderList() {
 
     if (!finishersCollapsed) {
       withTimes.forEach(({ r, finTs }, i) => {
+        const f = r._finisher;
+        const rank = f?.rank ?? (i + 1);
         let badge;
-        if (finTs) {
+        if (f?.time) {
+          badge = `<span class="r-fin">${medal(rank)} ${f.time}</span>`;   // officiële tijd + medaille
+        } else if (finTs) {
           if (i === 0) {
             const t = new Date(finTs).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
             badge = `<span class="r-fin">${t}</span>`;
@@ -3159,7 +3195,7 @@ function renderList() {
         } else {
           badge = `<span class="r-fin">✓ Fin</span>`;
         }
-        el.appendChild(makeRow(r, i + 1, badge, ''));
+        el.appendChild(makeRow(r, rank, badge, ''));
       });
     }
   }
@@ -3932,7 +3968,8 @@ async function init() {
   checkResults();
   checkOverlays();
   startRaceClock();
-  loadRoute().then(() => { loadGhosts(); drawRouteDivergences(); drawLauBonus(); if (allRiders.length) { applyFinishers(allRiders); renderMarkers(); renderList(); } });
+  loadRoute().then(() => { loadGhosts(); drawRouteDivergences(); drawLauBonus();
+    if (allRiders.length) { applyFinishers(allRiders); allRiders = filterOffRoute(allRiders); riders = allRiders; renderMarkers(); renderList(); } });
   loadPositions().then(startCountdown);
 }
 init();
