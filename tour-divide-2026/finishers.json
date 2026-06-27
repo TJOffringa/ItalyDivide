@@ -1,5 +1,11 @@
 [
   { "name": "Victor Bosoni", "rank": 1, "winner": true, "time": "11d 08u 27m" },
   { "name": "Laurens Ten Dam", "rank": 2, "time": "13d 07u 41m" },
-  { "name": "Angus Young", "rank": 3, "time": "13d 18u 03m" }
+  { "name": "Angus Young", "rank": 3, "time": "13d 18u 03m" },
+  { "name": "Mikko Kainu", "rank": 4, "time": "13d 23u 29m" },
+  { "name": "Dries Van Der Kleij", "rank": 5, "time": "14d 03u 59m" },
+  { "name": "Xavier Chiriboga (the Farmer )", "rank": 6, "time": "14d 05u 00m" },
+  { "name": "Felix Laberge", "rank": 7, "time": "14d 07u 36m" },
+  { "name": "Meaghan Hackinen", "rank": 8, "time": "14d 10u 02m", "icon": "🏆", "note": "1e vrouw" },
+  { "name": "Yossi Baruch", "rank": 9, "time": "14d 11u 00m" }
 ]

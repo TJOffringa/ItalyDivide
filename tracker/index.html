@@ -1500,7 +1500,7 @@ function renderMarkers() {
     const color   = rd.riderColor || '#888';
     const opacity = rd.scratched ? 0.3 : 0.9;
 
-    const medalTxt = rd._finisher ? ' ' + medal(rd._finisher.rank) : '';
+    const medalTxt = rd._finisher ? ' ' + finisherIcon(rd._finisher) : '';
     const label  = `<span class="rl-inner">${rd.name.split(' ')[0]}${medalTxt}</span>`;
     if (markerMap[id]) {
       markerMap[id]
@@ -3050,13 +3050,14 @@ function fmtAgo(ms) {
   return `${h}u ${String(m % 60).padStart(2, '0')}m geleden`;
 }
 function medal(rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🏅'; }
+function finisherIcon(f) { if (!f) return '🏁'; return f.icon || (f.rank === 1 ? '🥇' : f.rank === 2 ? '🥈' : f.rank === 3 ? '🥉' : '🏁'); }
 function popupHtml(rd) {
   const km       = rd.distanceOnTrack ? rd.distanceOnTrack.toFixed(1) : '—';
   const fin      = rd._finisher;
   const finished = !rd.scratched && (rd.distanceOnTrack || 0) >= finishKm - 0.5;
   const status   = rd.scratched  ? '<span style="color:#b90a0a">DNF</span>'
     : fin && fin.rank === 1      ? '<span style="color:#d4a017;font-weight:700">🥇 Gewonnen!</span>'
-    : fin                        ? `<span style="color:var(--green)">${medal(fin.rank)} Gefinisht · ${fin.rank}e plaats</span>`
+    : fin                        ? `<span style="color:var(--green)">${finisherIcon(fin)} Gefinisht · ${fin.rank}e plaats${fin.note ? ' · ' + fin.note : ''}</span>`
     : finished                   ? '<span style="color:var(--green)">✓ Gefinisht</span>'
                                  : '<span style="color:var(--green)">Rijdend</span>';
   const id       = String(rd.deviceId);
@@ -3078,7 +3079,7 @@ function popupHtml(rd) {
     ? `https://www.google.com/maps/place/${rd.latitude},${rd.longitude}/@${rd.latitude},${rd.longitude},15z/data=!3m1!1e3`
     : null;
   const btnStyle = 'margin-top:6px;width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;display:block;text-align:center;text-decoration:none;box-sizing:border-box';
-  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}${fin ? ' ' + medal(fin.rank) : ''}</div>
+  return `<div class="pu-name" style="color:${rd.riderColor}">${rd.name}${fin ? ' ' + finisherIcon(fin) : ''}</div>
     <div class="pu-meta">#${rd.teamNumber} · ${km} km · ${status}</div>
     ${fin && fin.time ? `<div class="pu-meta" style="margin-top:2px">🏁 Finishtijd: <b style="color:var(--text)">${fin.time}</b>${fin.winner ? ' · winnaar Tour Divide 2026' : ''}</div>` : ''}
     ${statsHtml}
@@ -3184,7 +3185,7 @@ function renderList() {
         const rank = f?.rank ?? (i + 1);
         let badge;
         if (f?.time) {
-          badge = `<span class="r-fin">${medal(rank)} ${f.time}</span>`;   // officiële tijd + medaille
+          badge = `<span class="r-fin">${finisherIcon(f)} ${f.time}</span>`;   // officiële tijd + icoon
         } else if (finTs) {
           if (i === 0) {
             const t = new Date(finTs).toLocaleTimeString('nl-NL', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam' });
